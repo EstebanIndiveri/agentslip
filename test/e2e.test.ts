@@ -210,8 +210,9 @@ describe("compiled binary e2e", () => {
     expect(result.stdout.trim()).toBe("{}");
     const slips = path.join(home, "slips");
     const svgs = fs.readdirSync(slips).filter((f) => f.endsWith(".svg"));
+    expect(svgs.length).toBeGreaterThan(0);
     const svg = fs.readFileSync(path.join(slips, svgs[0]), "utf8");
-    expect(svg).toMatch(/42 in/);
+    expect(svg).toMatch(/S<\/tspan><tspan[^>]*>E<\/tspan><tspan[^>]*>S<\/tspan>/);
   });
 
   it("compiled hook with defaultConfig does not leak secrets into the SVG", async () => {
