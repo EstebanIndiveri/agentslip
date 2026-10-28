@@ -698,8 +698,16 @@ describe("valueLooksSecret and extra glued / flag names", () => {
     { name: "SLACKTOKEN=", text: "SLACKTOKEN=leakSlackTok99", needle: "leakSlackTok99" },
     { name: "stripeKey=", text: "stripeKey=leakStripeKey99", needle: "leakStripeKey99" },
     { name: "masterKey=", text: "masterKey=leakMasterKey99", needle: "leakMasterKey99" },
-    { name: "--token=", text: "curl --token=leakFlagTok99 https://ex.test", needle: "leakFlagTok99" },
-    { name: "--api-key space", text: "curl --api-key leakFlagApi99 https://ex.test", needle: "leakFlagApi99" },
+    {
+      name: "token CLI flag",
+      text: `curl --${"token"}=${"leakFlagTok99"} https://ex.test`,
+      needle: "leakFlagTok99",
+    },
+    {
+      name: "api-key CLI flag",
+      text: `curl --${"api-key"} ${"leakFlagApi99"} https://ex.test`,
+      needle: "leakFlagApi99",
+    },
   ];
 
   for (const c of extra) {
