@@ -19,7 +19,8 @@
  * MUTATION CHECK: drop redactDeep budget → adversarial MultiEdit exceeds 500 ms
  * and text past the budget appears raw.
  * MUTATION CHECK: drop redactDeep depth guard → 10k-nest test throws.
- * MUTATION CHECK: JSON_STRING `\\?` (single escape) → Bash double-escaped JSON fails.
+ * MUTATION CHECK: JSON_STRING / JSON_STRING_UNCLOSED `\\?` (single escape) →
+ * Bash double-escaped JSON fails.
  * MUTATION CHECK: drop JSON_STRING_UNCLOSED → unclosed `{"apiKey":"…` and
  * space-in-value filled-straddle tests fail.
  * MUTATION CHECK: revert JSON value class to `[^"'\\]` → JSON-backslash leak tests fail.

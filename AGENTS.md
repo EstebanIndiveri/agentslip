@@ -45,7 +45,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   17. Hard-slice the scan window (no whitespace cut before redacting) → filled boundary-straddle tests fail.
   18. Drop the `redactDeep` character budget → adversarial MultiEdit (`"a-".repeat(4096)` / `"eyJ-".repeat(2048)`) exceeds 500 ms, or more than ~12 KB is fed to `redact`.
   19. Drop the `redactDeep` depth guard → 10k-nest test throws.
-  20. JSON_STRING `\\?` (single escape) → Bash double-escaped JSON test fails.
+  20. JSON_STRING / JSON_STRING_UNCLOSED `\\?` (single escape on both quote prefixes) → Bash double-escaped JSON test fails.
   21. Drop the NEEDS YOU line cap in `src/slips/document.ts` → more than 8 request content lines print.
   22. `clipField` hard-cut (keep the window when there is no whitespace) → 9 KB no-space token is not `"…"`.
   23. Drop the `budget.used` guard in `walkDeep` → `RawPastBudget99` appears raw.
