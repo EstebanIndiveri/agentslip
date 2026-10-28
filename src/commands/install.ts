@@ -159,7 +159,7 @@ function agentslipBackupPath(file: string): string {
 }
 
 export type BackupResult = {
-  action: "created" | "agentslip-bak" | "skipped" | "none";
+  action: "created" | "agentslip-bak" | "skipped" | "already" | "none";
   dest?: string;
 };
 
@@ -170,18 +170,38 @@ function formatBackup(result: BackupResult): string {
   if (result.action === "agentslip-bak" && result.dest) {
     return `backup ${path.basename(result.dest)}`;
   }
+  if (result.action === "already") {
+    return "no backup; file already has agentslip";
+  }
   if (result.action === "skipped") {
     return "no new backup; existing .bak files left in place";
   }
   return "no backup";
 }
 
+function settingsContainAgentslip(obj: Record<string, unknown>): boolean {
+  const hooks = obj.hooks;
+  if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) return false;
+  for (const list of Object.values(hooks as Record<string, unknown>)) {
+    if (Array.isArray(list) && listContainsAgentslip(list)) return true;
+  }
+  return false;
+}
+
 /**
  * Copy `file` to `file.bak` when that path is free. If a foreign `.bak`
  * already exists, write `file.agentslip.bak` instead. Never overwrite either.
+ * On install, skip backup when the current file already contains agentslip
+ * so we do not snapshot a file that is already ours.
  */
-function maybeBackup(file: string): BackupResult {
+function maybeBackup(
+  file: string,
+  opts?: { skipIfAlreadyAgentslip?: boolean; parsed?: Record<string, unknown> },
+): BackupResult {
   if (!fs.existsSync(file)) return { action: "none" };
+  if (opts?.skipIfAlreadyAgentslip && opts.parsed && settingsContainAgentslip(opts.parsed)) {
+    return { action: "already" };
+  }
   const bak = backupPath(file);
   if (!fs.existsSync(bak)) {
     fs.copyFileSync(file, bak);
@@ -219,7 +239,7 @@ function mergeJson(file: string, hooks: Record<string, unknown[]>): BackupResult
   let backup: BackupResult = { action: "none" };
   if (fs.existsSync(file)) {
     existing = readSettings(file);
-    backup = maybeBackup(file);
+    backup = maybeBackup(file, { skipIfAlreadyAgentslip: true, parsed: existing });
   }
   const hookMap = (existing.hooks as Record<string, unknown[]>) ?? {};
   for (const [event, entries] of Object.entries(hooks)) {

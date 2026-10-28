@@ -2,11 +2,13 @@
 
 ## 0.1.1 — 2026-10-28
 
-- Redaction matches camelCase JSON keys (`apiKey`, `accessToken`, `clientSecret`) and glued uppercase names (`APIKEY`, `GITHUBTOKEN`, `DBPASSWORD`, `MYAPP_APIKEY`). Plain words `bypass`, `hotkey`, `monkey`, and `keyboard` are not redacted.
+- Assignment redaction does not consume the value when the name is not a secret, so `Bash: DB_PASS=`, `I ran: APIKEY=`, and `aws_secret_access_key =` are redacted.
+- Redaction matches camelCase JSON keys (`apiKey`, `accessToken`, `clientSecret`), glued names (`APIKEY`, `apikey`, `GITHUBTOKEN`, `DBPASSWORD`, `MYAPP_APIKEY`, `DBPASS`), query strings (`?apikey=`, `&githubtoken=`), `MYSQL_PWD=`, escaped JSON (`{\"apiKey\":\"…\"}`), Python dicts (`{'apiKey': '…'}`), numeric JSON (`"apiKey": 1234`), and quoted values with spaces (`API_KEY='a b'`).
 - Assignment redaction keeps the original `=` or `:` separator (for example `x-api-key: [redacted]`).
-- `mysql -p` redaction also covers `mysqldump`, `mysqladmin`, and `mysqlimport`.
-- `install --write` logs whether it wrote `.bak`, `.agentslip.bak`, or no backup. A foreign existing `.bak` is left in place; the current file is copied to `.agentslip.bak`.
-- `.map` files are excluded from the npm pack tarball.
+- Bare `key` / `token`, data-model names (`primaryKey`, `sortKey`, `cacheKey`, `foreignKey`, `idempotencyKey`, `nextToken`), `token: string;`, JSX `key={…}`, `{"key": "Enter"}`, `TURKEY=1`, `MONKEY=` / `HOTKEY=`, and `ls -port=` after `mysql … &&` are not treated as secrets.
+- `mysql -p` redaction also covers `mysqldump`, `mysqladmin`, and `mysqlimport`, and does not eat `-port` on a later command.
+- `install --write` logs whether it wrote `.bak`, `.agentslip.bak`, or no backup. A foreign existing `.bak` is left in place; the current file is copied to `.agentslip.bak` only when that file does not already contain agentslip.
+- Compiled JS is emitted without `sourceMappingURL`. `.map` files are excluded from the npm pack tarball.
 - Demo GIF uses a fixed repo name `demo-app`. The gh-pages SESSION sample is built from the small transcript fixture (not all `n/a`).
 
 ## 0.1.0 — 2026-10-28

@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultConfig } from "./config.js";
 import { printSlip } from "./print.js";
+import { parseHook } from "./hooks/parse.js";
 import { redact, REDACTION_ENABLED } from "./redact.js";
 import { buildDocument, renderSlip } from "./slips/document.js";
 import type { SlipData } from "./types.js";
@@ -369,6 +370,8 @@ describe("camelCase / glued names on document, .bin, and TCP", () => {
     { name: "hotkey:", text: "hotkey:keepHotkey99", needle: "keepHotkey99" },
     { name: "monkey=", text: "monkey=keepMonkey99", needle: "keepMonkey99" },
     { name: "keyboard=", text: "keyboard=keepKeyboard99", needle: "keepKeyboard99" },
+    { name: "MONKEY=", text: "MONKEY=keepUpperMonkey99", needle: "keepUpperMonkey99" },
+    { name: "HOTKEY=", text: "HOTKEY=keepUpperHotkey99", needle: "keepUpperHotkey99" },
   ];
 
   for (const c of keep) {
@@ -379,5 +382,296 @@ describe("camelCase / glued names on document, .bin, and TCP", () => {
       expect(s.bin).toContain(c.needle);
       expect(s.tcp).toContain(c.needle);
     });
+  }
+});
+
+describe("escaped / python / numeric / quoted JSON-like secrets", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfaces(request: string): Promise<{ document: string; bin: string; tcp: string }> {
+    const slip = needsYou(request);
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-surf-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: "tcp" }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  const cases: { name: string; text: string; needle: string }[] = [
+    {
+      name: 'escaped-quote JSON {\\"apiKey\\":\\"X\\"}',
+      text: String.raw`{\"apiKey\":\"leakEscJson99\"}`,
+      needle: "leakEscJson99",
+    },
+    {
+      name: "Python dict {'apiKey': 'X'}",
+      text: "{'apiKey': 'leakPyDict99'}",
+      needle: "leakPyDict99",
+    },
+    {
+      name: 'numeric JSON "apiKey": 1234…',
+      text: '{"apiKey": 123456789012345}',
+      needle: "123456789012345",
+    },
+    {
+      name: "quoted API_KEY='a b'",
+      text: "API_KEY='leakQsA99 has space'",
+      needle: "leakQsA99",
+    },
+    {
+      name: 'quoted API_KEY="a b"',
+      text: 'API_KEY="leakQsB99 has space"',
+      needle: "leakQsB99",
+    },
+    { name: "?apikey= query", text: "https://ex.test/x?apikey=leakQueryApi99", needle: "leakQueryApi99" },
+    { name: "&githubtoken= query", text: "https://ex.test/x?q=1&githubtoken=leakQueryGh99", needle: "leakQueryGh99" },
+    { name: "lowercase glued dbpassword=", text: "dbpassword=leakGluedLower99", needle: "leakGluedLower99" },
+    { name: "MYSQL_PWD=", text: "MYSQL_PWD=leakMysqlPwd99", needle: "leakMysqlPwd99" },
+    { name: "DBPASS=", text: "DBPASS=leakDbpass99", needle: "leakDbpass99" },
+  ];
+
+  for (const c of cases) {
+    it(`redacts ${c.name} in document, .bin, and TCP`, async () => {
+      const out = redact(c.text);
+      expect(out).not.toContain(c.needle);
+      expect(out).toMatch(/\[redacted\]/);
+      if (c.name.startsWith("quoted API_KEY='")) {
+        expect(out).not.toContain("has space");
+        expect(out).toContain("API_KEY='[redacted]'");
+      }
+      if (c.name.startsWith('quoted API_KEY="')) {
+        expect(out).not.toContain("has space");
+        expect(out).toContain('API_KEY="[redacted]"');
+      }
+      const s = await surfaces(c.text);
+      expect(s.document).not.toContain(c.needle);
+      expect(s.bin).not.toContain(c.needle);
+      expect(s.tcp).not.toContain(c.needle);
+    });
+  }
+});
+
+describe("isSecretName false positives (must stay visible)", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfaces(request: string): Promise<{ document: string; bin: string; tcp: string }> {
+    const slip = needsYou(request);
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-surf-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: "tcp" }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  const keep: { name: string; text: string; needle: string }[] = [
+    { name: "bare key=", text: "key=keepBareKey99", needle: "keepBareKey99" },
+    { name: "bare token=", text: "token=keepBareTok99", needle: "keepBareTok99" },
+    { name: "primaryKey=", text: "primaryKey=keepPrimary99", needle: "keepPrimary99" },
+    { name: "sortKey=", text: "sortKey=keepSort99", needle: "keepSort99" },
+    { name: "cacheKey=", text: "cacheKey=keepCache99", needle: "keepCache99" },
+    { name: "foreignKey=", text: "foreignKey=keepFk99", needle: "keepFk99" },
+    { name: "idempotencyKey=", text: "idempotencyKey=keepIdem99", needle: "keepIdem99" },
+    { name: "nextToken=", text: "nextToken=keepNext99", needle: "keepNext99" },
+    { name: "TS token: string;", text: "token: string;", needle: "string;" },
+    { name: "JSX key={item.id}", text: "<li key={item.id}>", needle: "item.id" },
+    { name: '{"key": "Enter"}', text: '{"key": "Enter"}', needle: "Enter" },
+    { name: "TURKEY=1", text: "TURKEY=keepTurkey99", needle: "keepTurkey99" },
+  ];
+
+  for (const c of keep) {
+    it(`does not redact ${c.name} in document, .bin, or TCP`, async () => {
+      const out = redact(c.text);
+      expect(out).toContain(c.needle);
+      expect(out).not.toContain("[redacted]");
+      if (c.name.startsWith("JSX")) {
+        expect(out).toContain("<li key={item.id}>");
+        expect(out).toContain(">");
+      }
+      const s = await surfaces(c.text);
+      expect(s.document).toContain(c.needle);
+      expect(s.document).not.toContain("[redacted]");
+      expect(s.bin).toContain(c.needle);
+      expect(s.tcp).toContain(c.needle);
+    });
+  }
+
+  it("does not redact TURKEY=1", () => {
+    const out = redact("TURKEY=1");
+    expect(out).toContain("TURKEY=1");
+    expect(out).not.toContain("[redacted]");
+  });
+
+  it("does not redact -port after mysql && ls", async () => {
+    const text = "mysql -uroot -phunter2 && ls -port=1";
+    const out = redact(text);
+    expect(out).not.toContain("hunter2");
+    expect(out).toContain("-p[redacted]");
+    expect(out).toContain("-port=1");
+    const s = await surfaces(text);
+    expect(s.document).not.toContain("hunter2");
+    expect(s.bin).toContain("-port=1");
+    expect(s.tcp).toContain("-port=1");
+    expect(s.bin).not.toContain("hunter2");
+    expect(s.tcp).not.toContain("hunter2");
+  });
+});
+
+describe("ASSIGN does not swallow later secrets on hook slips", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfacesFromSlip(
+    slip: SlipData,
+  ): Promise<{ document: string; bin: string; tcp: string }> {
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-hook-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: `${slip.sessionId || "s"}-tcp` }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  function load(rel: string): Record<string, unknown> {
+    return JSON.parse(fs.readFileSync(path.join(process.cwd(), rel), "utf8")) as Record<
+      string,
+      unknown
+    >;
+  }
+
+  const snippets = [
+    {
+      name: "Bash: DB_PASS=",
+      command: "DB_PASS=leakAssignDbPass99",
+      stop: "Bash: DB_PASS=leakAssignDbPass99",
+      needle: "leakAssignDbPass99",
+    },
+    {
+      name: "I ran: APIKEY=",
+      command: "I ran: APIKEY=leakAssignApiKey99",
+      stop: "I ran: APIKEY=leakAssignApiKey99",
+      needle: "leakAssignApiKey99",
+    },
+    {
+      name: "Bash: aws_secret_access_key =",
+      command: "aws_secret_access_key = leakAssignAws99",
+      stop: "Bash: aws_secret_access_key = leakAssignAws99",
+      needle: "leakAssignAws99",
+    },
+  ];
+
+  const events: {
+    name: string;
+    build: (s: (typeof snippets)[number]) => Record<string, unknown>;
+  }[] = [
+    {
+      name: "Claude Code Bash PermissionRequest",
+      build: (s) => {
+        const p = load("fixtures/claude-code/permission-request.json");
+        p.tool_name = "Bash";
+        p.tool_input = { command: s.command, description: "run" };
+        return p;
+      },
+    },
+    {
+      name: "Claude Code Stop",
+      build: (s) => {
+        const p = load("fixtures/claude-code/stop.json");
+        p.last_assistant_message = s.stop;
+        return p;
+      },
+    },
+    {
+      name: "Codex PermissionRequest",
+      build: (s) => {
+        const p = load("fixtures/codex/permission-request.json");
+        p.tool_name = "Bash";
+        p.tool_input = { command: s.command, description: "run" };
+        return p;
+      },
+    },
+    {
+      name: "Codex Stop",
+      build: (s) => {
+        const p = load("fixtures/codex/stop.json");
+        p.last_assistant_message = s.stop;
+        return p;
+      },
+    },
+  ];
+
+  for (const ev of events) {
+    for (const s of snippets) {
+      it(`${ev.name} redacts ${s.name} in document, .bin, and TCP`, async () => {
+        const data = await parseHook(ev.build(s), frozen);
+        expect(data).not.toBeNull();
+        const slip = data as SlipData;
+        const srf = await surfacesFromSlip(slip);
+        expect(srf.document).not.toContain(s.needle);
+        expect(srf.bin).not.toContain(s.needle);
+        expect(srf.tcp).not.toContain(s.needle);
+        expect(srf.document).toMatch(/\[redacted\]/);
+      });
+    }
   }
 });

@@ -35,6 +35,9 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   7. Drop `r()` on `data.branch` in `src/slips/document.ts` → branch document-string leak test fails.
   8. Remove `writeJsonAndExit()` from the hard-timeout path in `src/commands/hook.ts` → hard-timeout e2e fails.
   9. Drop camelCase / glued-uppercase branches from `isSecretName` in `src/redact.ts` → camelCase and glued assignment leak tests fail.
+  10. Make `ASSIGN_HEAD` consume the value for non-secret names (old `([^\s,;]+)` match, return full match) → `Bash: DB_PASS=` / `I ran: APIKEY=` hook tests fail.
+  11. Drop `GENERIC_KEY_NAMES` / glued-prefix checks so `primaryKey`, `token: string;`, JSX `key=`, `{"key":"Enter"}`, and `TURKEY=` are treated as secrets → false-positive tests fail.
+  12. Remove the `NODE_ENV === "test"` guard around `AGENTSLIP_HOOK_HANG_MS` → the hang-ignored e2e fails.
 
 ## Adding an agent
 

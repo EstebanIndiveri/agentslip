@@ -254,6 +254,18 @@ describe("compiled binary e2e", () => {
     expect(result.stdout).toContain("My Tools");
   });
 
+  it("AGENTSLIP_HOOK_HANG_MS is ignored when NODE_ENV is not test", async () => {
+    const result = await runHook(fixture("fixtures/claude-code/stop.json"), {
+      AGENTSLIP_HOOK_HANG_MS: "5000",
+      NODE_ENV: "production",
+    });
+    homes.push(result.home);
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).not.toMatch(/hard timeout/);
+  });
+
   it("hard timeout still writes {} and exits 0", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
     homes.push(home);
