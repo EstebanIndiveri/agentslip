@@ -1,0 +1,17 @@
+[
+  {
+    "file": "0003-session-20261027T150000.svg",
+    "kind": "session",
+    "ticketNo": 3
+  },
+  {
+    "file": "0002-needs-you-20261027T150000.svg",
+    "kind": "needs-you",
+    "ticketNo": 2
+  },
+  {
+    "file": "0001-done-20261027T150000.svg",
+    "kind": "done",
+    "ticketNo": 1
+  }
+]
