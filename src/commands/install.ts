@@ -138,11 +138,11 @@ function apply(
   if (!opts.write && opts.uninstall) return;
   try {
     if (opts.uninstall) {
-      removeJson(file);
-      log(`removed agentslip hooks from ${file}`);
+      const backup = removeJson(file);
+      log(`removed agentslip hooks from ${file} (${formatBackup(backup)})`);
     } else {
-      mergeJson(file, hooks);
-      log(`wrote ${opts.label} hooks to ${file} (backup ${path.basename(file)}.bak)`);
+      const backup = mergeJson(file, hooks);
+      log(`wrote ${opts.label} hooks to ${file} (${formatBackup(backup)})`);
     }
   } catch (err) {
     logStderr(err instanceof Error ? err.message : String(err));
@@ -154,23 +154,65 @@ function backupPath(file: string): string {
   return `${file}.bak`;
 }
 
-/**
- * Copy `file` to `file.bak` once. Never overwrite an existing backup —
- * especially one that already contains agentslip (that would replace the
- * original pre-install file with a later agentslip-aware snapshot).
- */
-function maybeBackup(file: string): void {
-  const bak = backupPath(file);
-  if (fs.existsSync(bak)) {
-    try {
-      const raw = fs.readFileSync(bak, "utf8");
-      if (raw.includes("agentslip")) return;
-    } catch {
-      return;
-    }
-    return;
+function agentslipBackupPath(file: string): string {
+  return `${file}.agentslip.bak`;
+}
+
+export type BackupResult = {
+  action: "created" | "agentslip-bak" | "skipped" | "already" | "none";
+  dest?: string;
+};
+
+function formatBackup(result: BackupResult): string {
+  if (result.action === "created" && result.dest) {
+    return `backup ${path.basename(result.dest)}`;
   }
-  fs.copyFileSync(file, bak);
+  if (result.action === "agentslip-bak" && result.dest) {
+    return `backup ${path.basename(result.dest)}`;
+  }
+  if (result.action === "already") {
+    return "no backup; file already has agentslip";
+  }
+  if (result.action === "skipped") {
+    return "no new backup; existing .bak files left in place";
+  }
+  return "no backup";
+}
+
+function settingsContainAgentslip(obj: Record<string, unknown>): boolean {
+  const hooks = obj.hooks;
+  if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) return false;
+  for (const list of Object.values(hooks as Record<string, unknown>)) {
+    if (Array.isArray(list) && listContainsAgentslip(list)) return true;
+  }
+  return false;
+}
+
+/**
+ * Copy `file` to `file.bak` when that path is free. If a foreign `.bak`
+ * already exists, write `file.agentslip.bak` instead. Never overwrite either.
+ * On install, skip backup when the current file already contains agentslip
+ * so we do not snapshot a file that is already ours.
+ */
+function maybeBackup(
+  file: string,
+  opts?: { skipIfAlreadyAgentslip?: boolean; parsed?: Record<string, unknown> },
+): BackupResult {
+  if (!fs.existsSync(file)) return { action: "none" };
+  if (opts?.skipIfAlreadyAgentslip && opts.parsed && settingsContainAgentslip(opts.parsed)) {
+    return { action: "already" };
+  }
+  const bak = backupPath(file);
+  if (!fs.existsSync(bak)) {
+    fs.copyFileSync(file, bak);
+    return { action: "created", dest: bak };
+  }
+  const alt = agentslipBackupPath(file);
+  if (!fs.existsSync(alt)) {
+    fs.copyFileSync(file, alt);
+    return { action: "agentslip-bak", dest: alt };
+  }
+  return { action: "skipped", dest: bak };
 }
 
 function readSettings(file: string): Record<string, unknown> {
@@ -191,12 +233,13 @@ function readSettings(file: string): Record<string, unknown> {
   return obj;
 }
 
-function mergeJson(file: string, hooks: Record<string, unknown[]>): void {
+function mergeJson(file: string, hooks: Record<string, unknown[]>): BackupResult {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let existing: Record<string, unknown> = {};
+  let backup: BackupResult = { action: "none" };
   if (fs.existsSync(file)) {
     existing = readSettings(file);
-    maybeBackup(file);
+    backup = maybeBackup(file, { skipIfAlreadyAgentslip: true, parsed: existing });
   }
   const hookMap = (existing.hooks as Record<string, unknown[]>) ?? {};
   for (const [event, entries] of Object.entries(hooks)) {
@@ -207,6 +250,7 @@ function mergeJson(file: string, hooks: Record<string, unknown[]>): void {
   }
   existing.hooks = hookMap;
   fs.writeFileSync(file, `${JSON.stringify(existing, null, 2)}\n`);
+  return backup;
 }
 
 export function tokenizeCommand(cmd: string): string[] {
@@ -297,8 +341,8 @@ export function listContainsAgentslip(list: unknown[]): boolean {
   return false;
 }
 
-function removeJson(file: string): void {
-  if (!fs.existsSync(file)) return;
+function removeJson(file: string): BackupResult {
+  if (!fs.existsSync(file)) return { action: "none" };
   const existing = readSettings(file);
   const hookMap = (existing.hooks as Record<string, unknown[]>) ?? {};
   for (const event of Object.keys(hookMap)) {
@@ -321,6 +365,7 @@ function removeJson(file: string): void {
     else delete hookMap[event];
   }
   existing.hooks = hookMap;
-  maybeBackup(file);
+  const backup = maybeBackup(file);
   fs.writeFileSync(file, `${JSON.stringify(existing, null, 2)}\n`);
+  return backup;
 }

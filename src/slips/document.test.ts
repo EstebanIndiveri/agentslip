@@ -63,6 +63,24 @@ describe("document", () => {
     expect(doc.split("\n").some((l) => l.length > 80)).toBe(false);
   });
 
+  it("caps NEEDS YOU request at 8 wrapped lines plus a leftover count", () => {
+    const long: SlipData = {
+      ...needs,
+      request: "Bash:\n" + "word\n".repeat(400),
+    };
+    const doc = buildDocument(long, { widthMm: 58, ticketNo: 1 }).document;
+    const lines = doc.split("\n");
+    const start = lines.findIndex((l) => l.startsWith("`"));
+    const leftover = lines.findIndex((l) => /… \(\+\d+ lines\)/.test(l));
+    expect(start).toBeGreaterThan(-1);
+    expect(leftover).toBeGreaterThan(start);
+    const content = lines.slice(start, leftover);
+    expect(content.length).toBeGreaterThan(0);
+    expect(content.length).toBeLessThanOrEqual(8);
+    const m = doc.match(/… \(\+(\d+) lines\)/);
+    expect(Number(m?.[1])).toBeGreaterThan(8);
+  });
+
   it("omits summary when missing", () => {
     const { document } = buildDocument({ ...done, summary: undefined }, { widthMm: 58, ticketNo: 1 });
     expect(document).not.toMatch(/completed the refactoring/);

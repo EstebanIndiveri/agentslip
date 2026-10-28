@@ -1,6 +1,6 @@
 {
   "name": "agentslip",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Receipts for your coding agents. Claude Code and Codex hooks that print a thermal ESC/POS slip or a virtual paper roll.",
   "type": "module",
@@ -9,14 +9,15 @@
   },
   "files": [
     "dist",
-    "viewer/dist"
+    "viewer/dist",
+    "!**/*.map"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "prepare": "npm run build",
-    "build": "tsc -p tsconfig.build.json && vite build --config viewer/vite.config.ts",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && vite build --config viewer/vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p viewer/tsconfig.json",
     "test": "npm run build && vitest run && playwright test",
     "test:unit": "vitest run",

@@ -219,6 +219,17 @@ describe("compiled binary e2e", () => {
     expect(text).not.toMatch(/TAIL_OK/);
   });
 
+  it("prints package.json version for --version", () => {
+    const dist = path.join(process.cwd(), "dist", "cli.js");
+    expect(fs.existsSync(dist)).toBe(true);
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as {
+      version: string;
+    };
+    const result = spawnSync(process.execPath, [dist, "--version"], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(pkg.version);
+  });
+
   it("compiled install --claude dry-run quotes an absolute node dist/cli.js hook command", () => {
     const dist = path.join(process.cwd(), "dist", "cli.js");
     expect(fs.existsSync(dist)).toBe(true);
@@ -254,6 +265,18 @@ describe("compiled binary e2e", () => {
     expect(result.stdout).toContain("My Tools");
   });
 
+  it("AGENTSLIP_HOOK_HANG_MS is ignored when NODE_ENV is not test", async () => {
+    const result = await runHook(fixture("fixtures/claude-code/stop.json"), {
+      AGENTSLIP_HOOK_HANG_MS: "5000",
+      NODE_ENV: "production",
+    });
+    homes.push(result.home);
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).not.toMatch(/hard timeout/);
+  });
+
   it("hard timeout still writes {} and exits 0", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
     homes.push(home);
@@ -266,6 +289,7 @@ describe("compiled binary e2e", () => {
             ...process.env,
             AGENTSLIP_HOME: home,
             AGENTSLIP_HOOK_HANG_MS: "5000",
+            NODE_ENV: "test",
             AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
             TZ: "UTC",
           },
