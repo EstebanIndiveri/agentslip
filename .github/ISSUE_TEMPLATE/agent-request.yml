@@ -1,0 +1,41 @@
+name: Agent request
+description: Ask for another coding agent (planned for v0.2+)
+title: "Agent: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        v0.1 supports **Claude Code** and **Codex** only. Cursor, Gemini CLI, and opencode are out of scope until a later version.
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Cursor
+        - Gemini CLI
+        - opencode
+        - other
+    validations:
+      required: true
+  - type: input
+    id: other_name
+    attributes:
+      label: If other, which agent?
+      placeholder: e.g. Aider
+    validations:
+      required: false
+  - type: textarea
+    id: hooks_docs
+    attributes:
+      label: Official hook docs
+      description: URL of the vendor’s hook or stop-hook documentation, if it exists.
+    validations:
+      required: false
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this agent
+      description: What event should print a slip (done / needs you / session end)?
+    validations:
+      required: false

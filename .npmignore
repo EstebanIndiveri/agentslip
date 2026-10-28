@@ -1,0 +1,18 @@
+# Used instead of .gitignore when packing, so dist/ can ship even though gitignores it.
+src/
+test/
+fixtures/
+docs/
+scripts/
+viewer/src/
+viewer/index.html
+viewer/tsconfig.json
+viewer/vite.config.ts
+*.config.ts
+tsconfig*.json
+NOTES.md
+AGENTS.md
+.github/
+playwright-report/
+test-results/
+.cursor/

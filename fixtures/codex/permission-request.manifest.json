@@ -1,0 +1,20 @@
+{
+  "agent": "Codex",
+  "event": "PermissionRequest",
+  "source": "https://learn.chatgpt.com/docs/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": [
+    "session_id",
+    "transcript_path",
+    "cwd",
+    "hook_event_name",
+    "permission_mode",
+    "turn_id",
+    "tool_name",
+    "tool_input",
+    "tool_input.command",
+    "tool_input.description"
+  ],
+  "assumed_fields": ["model"],
+  "notes": "tool_input.command is documented for Bash. tool_input.description is documented as string|null and must not be relied on for every tool; included here because the docs mention it. model is a common Codex field."
+}

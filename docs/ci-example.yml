@@ -1,0 +1,25 @@
+# INACTIVE — do not copy this file to .github/workflows/
+# GitHub Actions is disabled on this repository by the owner's choice.
+# This file is an example of what a CI job could look like if Actions
+# were enabled later. It is not wired up and will not run.
+
+# name: test
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: "22"
+#           cache: npm
+#       - run: npm ci
+#       - run: npx playwright install --with-deps chromium
+#       - run: npm run typecheck
+#       - run: npm test
+#         env:
+#           TZ: UTC

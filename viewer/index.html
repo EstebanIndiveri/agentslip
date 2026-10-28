@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>agentslip — virtual roll</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#roll">Skip to roll</a>
+    <header class="top">
+      <h1>agentslip</h1>
+      <p class="tag">Virtual paper roll. Newest slip on top.</p>
+      <p class="help" id="help">
+        Keys: <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Home</kbd> newest · <kbd>End</kbd> oldest ·
+        <kbd>d</kbd> download SVG
+      </p>
+    </header>
+    <div class="printer" aria-hidden="true">
+      <div class="slot"></div>
+    </div>
+    <main id="roll" class="roll" tabindex="0" role="listbox" aria-label="Virtual paper roll" aria-live="polite"></main>
+    <p class="empty" id="empty" hidden>No slips yet. Run <code>agentslip test</code>.</p>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

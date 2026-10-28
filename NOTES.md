@@ -1,0 +1,45 @@
+# agentslip v0.1 — decisions, progress, blockers
+
+## Name check (2026-10-28)
+
+- npm `agentslip`: HTTP 404 (not in the registry)
+- PyPI `agentslip`: HTTP 404
+- GitHub search: only this private repo `EstebanIndiveri/agentslip`
+
+## Docs fetched (2026-10-28)
+
+- Claude Code hooks: https://code.claude.com/docs/en/hooks — Stop, Notification, PermissionRequest, SessionEnd input examples used as fixture sources.
+- Codex hooks: https://learn.chatgpt.com/docs/hooks — Stop, PermissionRequest, SessionEnd. Docs state the transcript format is not a stable interface.
+- receiptline **4.0.4**, license **Apache-2.0**. API: `receiptline.transform(doc, { cpl, encoding, command: 'escpos'|'svg', cutting })`. ESC/POS starts with ESC @ (`1b40`) and cut is GS V then GS r 1 (`1d5642001d7231`) when `cutting: true`.
+
+## Decisions
+
+- Single Node 22 + TypeScript package, bin `agentslip`.
+- Same ReceiptLine document → SVG and ESC/POS. Cut (`cutting: true` / GS V then GS r 1) only on ESC/POS.
+- SVG is sanitized: Google Fonts `@import` stripped; system monospace only.
+- Default driver `virtual`. File driver defaults to `~/.agentslip/agentslip.bin`. TCP printer timeout 800 ms. Hook `STDIN_MS=900`, `HARD_MS=STDIN_MS+900`. Always exit 0. Stdout `{}` so Codex Stop has JSON. `process.stdin.destroy()` on finish.
+- Transcript: `statSync` + `isFile()` first, last 256 KB, async read with 200 ms timeout. If the file is larger than 256 KB, `lastAssistant` may come from the tail; duration / turns / tools / tokens / cost are omitted so the slip prints `n/a`.
+- Tokens/cost never estimated; missing → `n/a`.
+- Agent detection: documented discriminator fields first (`notification_type`, `turn_id`, `prompt_id`, …), then `transcript_path` (`.claude` vs `.codex`/`rollout`). Ambiguous SessionEnd tries Claude then Codex.
+- `agentslip install` is dry-run unless `--write`; `--write` copies `${file}.bak` only when that backup does not already exist (never overwrite a bak that already contains agentslip). Invalid JSON aborts. `agentslip uninstall` removes only the exact command install writes (`agentslip hook` or quoted `node <our dist/cli.js> hook`).
+- Notification matcher `idle_prompt|agent_needs_input` so PermissionRequest does not double-print. `idle_prompt` after a recent Stop for the same session (120 s) is skipped.
+- Install prefers `agentslip hook` when `agentslip` is on PATH. Otherwise it stores a quoted `'<execPath>' '<dist/cli.js>' hook`, which pins `process.execPath` (re-run install after nvm/fnm switches Node).
+- PermissionRequest is printed as `perm-req` so 58 mm columns do not split mid-word.
+- No GitHub Actions (owner choice). No Bluetooth/USB/CUPS in v0.1. Bluetooth is under consideration.
+- No hardware printer in Cloud; README says no model was verified.
+
+## Tests
+
+See `AGENTS.md` for commands and mutation checks. Do not paste Cloud HOME paths, npm prefix errors, or other environment internals here.
+
+## SEO / pre-launch
+
+- `prepare` + `files` (`dist`, `viewer/dist`).
+- README: audit H1 + first paragraph; stdout `{}` for every event; tested hardware none; Bluetooth under consideration; How it was built.
+- Issue forms: printer-report, agent-request, config.yml. No workflows.
+- CHANGELOG.md 0.1.0 from implemented facts.
+- Demo GIF, social preview, and orphan `gh-pages` samples are regenerated from the compiled hook / snapshots. Pages is **not** enabled from this repo.
+
+## Blockers
+
+- No physical ESC/POS printer. TCP tests use a local fake server only.

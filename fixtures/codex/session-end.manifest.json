@@ -1,0 +1,9 @@
+{
+  "agent": "Codex",
+  "event": "SessionEnd",
+  "source": "https://learn.chatgpt.com/docs/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": ["session_id", "transcript_path", "cwd", "hook_event_name", "reason"],
+  "assumed_fields": [],
+  "notes": "Copied from the SessionEnd command example. Docs say reason is currently always 'other'. No turn_id on this event. Agent detection uses transcript_path containing .codex or rollout."
+}

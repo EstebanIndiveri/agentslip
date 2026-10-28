@@ -1,0 +1,60 @@
+name: Printer report
+description: Report whether agentslip worked on a real ESC/POS printer
+title: "Printer: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        v0.1 talks to a **network** ESC/POS printer (TCP port 9100). Bluetooth, USB, and CUPS are out of scope. No hardware model has been verified yet — that is why this form exists.
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Printer model as printed on the device, box, or driver page (for example TM-T20III, RP326).
+      placeholder: e.g. Epson TM-T20III
+    validations:
+      required: true
+  - type: dropdown
+    id: width
+    attributes:
+      label: Width
+      options:
+        - 58 mm
+        - 80 mm
+        - other
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - network (Ethernet or Wi-Fi, port 9100)
+        - other (please describe)
+    validations:
+      required: true
+  - type: dropdown
+    id: worked
+    attributes:
+      label: Did it work?
+      options:
+        - "yes — slip printed and cut"
+        - "partial — printed but layout/cut was wrong"
+        - "no — connection or garbage output"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Host, port, `widthMm`, firmware if you know it, and what you saw.
+    validations:
+      required: false
+  - type: textarea
+    id: photo
+    attributes:
+      label: Photo (optional)
+      description: GitHub issue forms cannot attach files here. After you submit, drag a photo of the printed slip onto the issue, or paste it below.
+    validations:
+      required: false
