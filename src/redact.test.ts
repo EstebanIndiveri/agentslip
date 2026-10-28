@@ -715,9 +715,14 @@ describe("REDACT_MAX_CHARS", () => {
   it("caps input to 4–8 KB before scanning", () => {
     expect(REDACT_MAX_CHARS).toBeGreaterThanOrEqual(4 * 1024);
     expect(REDACT_MAX_CHARS).toBeLessThanOrEqual(8 * 1024);
-    const huge = `https://u:p@x/${"a".repeat(100_000)}`;
+    const src = fs.readFileSync(path.join(process.cwd(), "src/redact.ts"), "utf8");
+    expect(src).toMatch(/text\.length > REDACT_MAX_CHARS/);
+    // Short lines so LONG_LINE truncation cannot hide a missing cap.
+    const huge = "a\n".repeat(50_000);
+    expect(huge.length).toBeGreaterThan(REDACT_MAX_CHARS * 2);
     const out = redact(huge);
     expect(out.length).toBeLessThanOrEqual(REDACT_MAX_CHARS);
+    expect(out.length).toBeGreaterThan(REDACT_MAX_CHARS - 2);
   });
 });
 
