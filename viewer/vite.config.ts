@@ -49,7 +49,12 @@ function slipsPlugin(): Plugin {
         if (url.startsWith("/slips/")) {
           const file = decodeURIComponent(url.slice("/slips/".length).split("?")[0]);
           const abs = path.join(dir, file);
-          if (!abs.startsWith(path.resolve(dir)) || !fs.existsSync(abs)) {
+          const rootDir = path.resolve(dir);
+          const target = path.resolve(abs);
+          if (
+            (target !== rootDir && !target.startsWith(rootDir + path.sep)) ||
+            !fs.existsSync(abs)
+          ) {
             res.statusCode = 404;
             res.end("not found");
             return;

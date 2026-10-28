@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ESC_INIT,
-  GS_V_PARTIAL,
   buildDocument,
   columnsFor,
+  hasCutSequence,
   renderFromDocument,
   renderSlip,
 } from "./document.js";
@@ -67,6 +67,13 @@ describe("document", () => {
     const { document } = buildDocument({ ...done, summary: undefined }, { widthMm: 58, ticketNo: 1 });
     expect(document).not.toMatch(/completed the refactoring/);
   });
+
+  it("ESC/POS cut is GS V then GS r 1", () => {
+    const rendered = renderSlip(done, defaultConfig(), 1);
+    expect(hasCutSequence(rendered.escpos)).toBe(true);
+    const hex = rendered.escpos.toString("hex");
+    expect(hex).toMatch(/1d5642.*1d7231/);
+  });
 });
 
 describe("snapshots from the same receiptline document", () => {
@@ -87,7 +94,7 @@ describe("snapshots from the same receiptline document", () => {
       expect(again.svg).toBe(rendered.svg);
       expect(again.escpos.equals(rendered.escpos)).toBe(true);
       expect(rendered.escpos.subarray(0, 2).equals(ESC_INIT)).toBe(true);
-      expect(rendered.escpos.includes(GS_V_PARTIAL)).toBe(true);
+      expect(hasCutSequence(rendered.escpos)).toBe(true);
       expect(rendered.svg).not.toContain("fonts.googleapis.com");
       await expect(rendered.svg).toMatchFileSnapshot(`../../test/__snapshots__/${name}.svg`);
       await expect(rendered.escpos.toString("hex")).toMatchFileSnapshot(

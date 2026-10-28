@@ -12,7 +12,7 @@ import { applyTranscript, summarize } from "./shared.js";
 
 const EVENTS = new Set(["Stop", "PermissionRequest", "SessionEnd"]);
 
-export function parseCodex(payload: unknown, at: Date = now()): SlipData | null {
+export async function parseCodex(payload: unknown, at: Date = now()): Promise<SlipData | null> {
   const p = asRecord(payload);
   if (!p) return null;
   const event = p.hook_event_name;
@@ -20,7 +20,7 @@ export function parseCodex(payload: unknown, at: Date = now()): SlipData | null 
 
   const cwd = typeof p.cwd === "string" ? p.cwd : undefined;
   const git = gitInfo(cwd);
-  const tx = readTranscript(p.transcript_path);
+  const tx = await readTranscript(p.transcript_path);
 
   const base: SlipData = {
     kind: "done",

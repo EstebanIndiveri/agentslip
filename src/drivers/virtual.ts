@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { RenderedSlip, SlipData } from "../types.js";
 import { defaultSlipsDir } from "../paths.js";
+import { formatLocalStamp } from "../clock.js";
 
 export type SlipMeta = {
   file: string;
@@ -23,7 +24,7 @@ export function writeVirtualSlip(
 ): string {
   const dest = slipsDir(dir);
   fs.mkdirSync(dest, { recursive: true });
-  const stamp = data.time.toISOString().replace(/[:.]/g, "").slice(0, 15);
+  const stamp = formatLocalStamp(data.time);
   const name = `${String(rendered.ticketNo).padStart(4, "0")}-${data.kind}-${stamp}.svg`;
   const file = path.join(dest, name);
   fs.writeFileSync(file, rendered.svg, "utf8");

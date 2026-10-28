@@ -8,7 +8,7 @@ import { examples } from "../examples.js";
 export async function runTest(): Promise<void> {
   const config = loadConfig();
   for (const fx of examples) {
-    const data = parseHook(fx, now());
+    const data = await parseHook(fx, now());
     if (!data) {
       log("test fixture failed to parse");
       continue;

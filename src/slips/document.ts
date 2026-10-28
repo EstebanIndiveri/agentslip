@@ -45,8 +45,8 @@ export function buildDocument(
   if (data.kind === "done") {
     lines.push(center("^^^DONE", cpl));
     kv(lines, "agent", data.agent, cpl);
-    kv(lines, "repo", data.repo, cpl);
-    kv(lines, "branch", data.branch, cpl);
+    kv(lines, "repo", data.repo ? r(data.repo) : undefined, cpl);
+    kv(lines, "branch", data.branch ? r(data.branch) : undefined, cpl);
     kv(lines, "time", formatLocal(data.time), cpl);
     if (data.duration) kv(lines, "dur", data.duration, cpl);
     if (data.gitShortstat) kv(lines, "diff", r(data.gitShortstat), cpl);
@@ -68,7 +68,7 @@ export function buildDocument(
   } else {
     lines.push(center("^^^SESSION", cpl));
     kv(lines, "agent", data.agent, cpl);
-    if (data.reason) kv(lines, "reason", data.reason, cpl);
+    if (data.reason) kv(lines, "reason", r(data.reason), cpl);
     kv(lines, "dur", data.duration ?? "n/a", cpl);
     kv(lines, "turns", String(data.turns ?? "n/a"), cpl);
     kv(lines, "tools", String(data.tools ?? "n/a"), cpl);
@@ -158,3 +158,19 @@ export function renderSlip(
 
 export const ESC_INIT = Buffer.from([0x1b, 0x40]);
 export const GS_V_PARTIAL = Buffer.from([0x1d, 0x56]);
+/** receiptline escpos cutting: GS V B NUL, then GS r 1 */
+export const GS_R_1 = Buffer.from([0x1d, 0x72, 0x31]);
+
+export function hasCutSequence(escpos: Buffer): boolean {
+  const v = indexOf(escpos, GS_V_PARTIAL);
+  if (v < 0) return false;
+  const r = indexOf(escpos, GS_R_1, v);
+  return r > v;
+}
+
+function indexOf(buf: Buffer, needle: Buffer, from = 0): number {
+  for (let i = from; i <= buf.length - needle.length; i++) {
+    if (buf.subarray(i, i + needle.length).equals(needle)) return i;
+  }
+  return -1;
+}

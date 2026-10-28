@@ -1,37 +1,129 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { runInstall } from "./install.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runInstall, runUninstall } from "./install.js";
 
 describe("install", () => {
   const dirs: string[] = [];
-  afterEach(() => {
-    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  const prev = {
+    claude: process.env.AGENTSLIP_CLAUDE_SETTINGS,
+    home: process.env.AGENTSLIP_HOME,
+    exit: process.exitCode,
+  };
+
+  beforeEach(() => {
+    process.exitCode = 0;
   });
 
-  it("dry-run does not write", () => {
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+    if (prev.claude === undefined) delete process.env.AGENTSLIP_CLAUDE_SETTINGS;
+    else process.env.AGENTSLIP_CLAUDE_SETTINGS = prev.claude;
+    if (prev.home === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prev.home;
+    process.exitCode = prev.exit;
+  });
+
+  function scratch(): { dir: string; file: string; home: string } {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-ins-"));
-    dirs.push(dir);
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-home-"));
+    dirs.push(dir, home);
     const file = path.join(dir, "settings.json");
     process.env.AGENTSLIP_CLAUDE_SETTINGS = file;
+    process.env.AGENTSLIP_HOME = home;
+    return { dir, file, home };
+  }
+
+  it("dry-run does not write", () => {
+    const { file } = scratch();
     runInstall(["--claude"]);
     expect(fs.existsSync(file)).toBe(false);
   });
 
-  it("--write creates a backup and merges hooks", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-ins-"));
-    dirs.push(dir);
-    const file = path.join(dir, "settings.json");
-    fs.writeFileSync(file, JSON.stringify({ hooks: { Stop: [] } }));
-    process.env.AGENTSLIP_CLAUDE_SETTINGS = file;
+  it("install with no flags does not write a log", () => {
+    const { home } = scratch();
+    runInstall([]);
+    expect(process.exitCode).toBe(1);
+    expect(fs.existsSync(path.join(home, "agentslip.log"))).toBe(false);
+  });
+
+  it("--write creates a single backup and merges hooks", () => {
+    const { dir, file } = scratch();
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ model: "opus", permissions: { allow: ["Read"] }, hooks: { Stop: [] } }),
+    );
+    runInstall(["--claude", "--write"]);
     runInstall(["--claude", "--write"]);
     const backups = fs.readdirSync(dir).filter((f) => f.endsWith(".bak"));
-    expect(backups.length).toBe(1);
+    expect(backups).toEqual(["settings.json.bak"]);
+    const written = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      model: string;
+      permissions: unknown;
+      hooks: Record<string, unknown[]>;
+    };
+    expect(written.model).toBe("opus");
+    expect(written.permissions).toEqual({ allow: ["Read"] });
+    expect(JSON.stringify(written.hooks.Stop)).toMatch(/agentslip hook/);
+    expect(JSON.stringify(written.hooks.SessionEnd)).toMatch(/agentslip hook/);
+    expect(JSON.stringify(written.hooks.Notification)).toMatch(/idle_prompt\|agent_needs_input/);
+  });
+
+  it("invalid JSON aborts without overwrite", () => {
+    const { dir, file } = scratch();
+    const garbage = "{not json, model and permissions must survive";
+    fs.writeFileSync(file, garbage);
+    runInstall(["--claude", "--write"]);
+    expect(process.exitCode).toBe(1);
+    expect(fs.readFileSync(file, "utf8")).toBe(garbage);
+    expect(fs.existsSync(path.join(dir, "settings.json.bak"))).toBe(false);
+  });
+
+  it("non-object hooks aborts without overwrite", () => {
+    const { file } = scratch();
+    const original = JSON.stringify({
+      model: "opus",
+      permissions: { allow: ["Read"] },
+      hooks: ["not-an-object"],
+    });
+    fs.writeFileSync(file, original);
+    runInstall(["--claude", "--write"]);
+    expect(process.exitCode).toBe(1);
+    expect(fs.readFileSync(file, "utf8")).toBe(original);
+  });
+
+  it("uninstall removes only agentslip hook entries", () => {
+    const { file } = scratch();
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        model: "opus",
+        hooks: {
+          Stop: [{ hooks: [{ type: "command", command: "other-tool", timeout: 2 }] }],
+        },
+      }),
+    );
+    runInstall(["--claude", "--write"]);
+    expect(JSON.stringify(JSON.parse(fs.readFileSync(file, "utf8")))).toMatch(/agentslip hook/);
+    runUninstall(["--claude", "--write"]);
+    const written = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      model: string;
+      hooks: Record<string, unknown[]>;
+    };
+    expect(written.model).toBe("opus");
+    expect(JSON.stringify(written.hooks.Stop)).toMatch(/other-tool/);
+    expect(JSON.stringify(written)).not.toMatch(/agentslip/);
+    expect(written.hooks.SessionEnd).toBeUndefined();
+  });
+
+  it("install --uninstall is the same as uninstall", () => {
+    const { file } = scratch();
+    runInstall(["--claude", "--write"]);
+    runInstall(["--claude", "--uninstall", "--write"]);
     const written = JSON.parse(fs.readFileSync(file, "utf8")) as {
       hooks: Record<string, unknown[]>;
     };
-    expect(JSON.stringify(written.hooks.Stop)).toMatch(/agentslip hook/);
-    expect(JSON.stringify(written.hooks.SessionEnd)).toMatch(/agentslip hook/);
+    expect(JSON.stringify(written)).not.toMatch(/agentslip/);
   });
 });

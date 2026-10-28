@@ -36,16 +36,23 @@ function render(animateNew: boolean): void {
       el.className = "slip";
       el.tabIndex = -1;
       el.dataset.file = item.file;
-      el.setAttribute("role", "listitem");
+      el.setAttribute("role", "option");
       const obj = document.createElement("object");
       obj.type = "image/svg+xml";
       obj.data = item.url;
       obj.setAttribute("aria-label", `Ticket ${item.ticketNo} ${item.kind}`);
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.innerHTML = `<span>#${item.ticketNo} ${item.kind}</span><span>${item.agent}</span>`;
+      const left = document.createElement("span");
+      left.textContent = `#${item.ticketNo} ${item.kind}`;
+      const right = document.createElement("span");
+      right.textContent = item.agent;
+      meta.append(left, right);
       el.append(obj, meta);
-      el.addEventListener("click", () => select(index, true));
+      el.addEventListener("click", () => {
+        const i = items.findIndex((x) => x.file === item.file);
+        select(i < 0 ? 0 : i, true);
+      });
       if (animateNew && isNew) el.style.animation = "emerge 0.55s ease-out";
       const before = roll.children[index];
       if (before) roll.insertBefore(el, before);

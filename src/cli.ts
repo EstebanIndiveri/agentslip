@@ -2,7 +2,7 @@
 import { runHook } from "./commands/hook.js";
 import { runTest } from "./commands/test.js";
 import { runView } from "./commands/view.js";
-import { runInstall } from "./commands/install.js";
+import { runInstall, runUninstall } from "./commands/install.js";
 import { log } from "./log.js";
 
 const HELP = `agentslip — receipts for your coding agents
@@ -14,6 +14,10 @@ Usage:
                                  Open the virtual paper-roll viewer
   agentslip install --claude|--codex [--write]
                                  Show (or write) hook configuration. Dry-run unless --write.
+  agentslip uninstall --claude|--codex [--write]
+                                 Remove only agentslip hook entries. Dry-run unless --write.
+  agentslip install --claude|--codex --uninstall [--write]
+                                 Same as uninstall.
 
 Config: ~/.agentslip/config.json
 Virtual slips: ~/.agentslip/slips/
@@ -39,6 +43,10 @@ async function main(argv: string[]): Promise<void> {
   }
   if (cmd === "install") {
     runInstall(argv.slice(1));
+    return;
+  }
+  if (cmd === "uninstall") {
+    runUninstall(argv.slice(1));
     return;
   }
   log(`unknown command: ${cmd}`);

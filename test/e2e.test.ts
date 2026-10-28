@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -52,6 +52,47 @@ function runHook(
   });
 }
 
+function runHookOpenStdin(
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<{ stdout: string; stderr: string; code: number | null; ms: number; home: string }> {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+  const { cmd, args } = bin();
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, [...args, "hook"], {
+      env: {
+        ...process.env,
+        AGENTSLIP_HOME: extraEnv.AGENTSLIP_HOME || home,
+        AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
+        TZ: "UTC",
+        ...extraEnv,
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      stdout += String(d);
+    });
+    child.stderr.on("data", (d) => {
+      stderr += String(d);
+    });
+    child.on("error", reject);
+    const killer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, 4000);
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      resolve({
+        stdout,
+        stderr,
+        code,
+        ms: Date.now() - started,
+        home: extraEnv.AGENTSLIP_HOME || home,
+      });
+    });
+  });
+}
+
 describe("compiled binary e2e", () => {
   const homes: string[] = [];
 
@@ -86,6 +127,7 @@ describe("compiled binary e2e", () => {
       const svgs = fs.existsSync(slips) ? fs.readdirSync(slips).filter((f) => f.endsWith(".svg")) : [];
       expect(svgs.length).toBeGreaterThan(0);
       expect(result.stderr).toMatch(/agentslip:/);
+      expect(result.stdout.trim()).toBe("{}");
     });
   }
 
@@ -94,6 +136,7 @@ describe("compiled binary e2e", () => {
     homes.push(result.home);
     expect(result.code).toBe(0);
     expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
     const slips = path.join(result.home, "slips");
     const svgs = fs.existsSync(slips) ? fs.readdirSync(slips).filter((f) => f.endsWith(".svg")) : [];
     expect(svgs.length).toBe(0);
@@ -120,5 +163,74 @@ describe("compiled binary e2e", () => {
     expect(result.code).toBe(0);
     expect(result.ms).toBeLessThan(2000);
     expect(result.stderr).toMatch(/printer error|ECONNREFUSED|timeout/i);
+    expect(result.stdout.trim()).toBe("{}");
+  });
+
+  it("never-closing stdin exits 0 under 2s and prints {}", async () => {
+    const result = await runHookOpenStdin();
+    homes.push(result.home);
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+  }, 5000);
+
+  it("FIFO transcript_path exits 0 under 2s", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+    homes.push(home);
+    const fifo = path.join(home, "tx.fifo");
+    execFileSync("mkfifo", [fifo]);
+    const payload = JSON.parse(fixture("fixtures/claude-code/session-end.json")) as Record<
+      string,
+      unknown
+    >;
+    payload.transcript_path = fifo;
+    const result = await runHook(JSON.stringify(payload), { AGENTSLIP_HOME: home });
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+  });
+
+  it("large transcript file exits 0 under 2s", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+    homes.push(home);
+    const tx = path.join(home, "tx.jsonl");
+    const line =
+      '{"type":"user","timestamp":"2026-10-27T14:00:00.000Z","message":{"role":"user","content":"pad"}}\n';
+    const tail =
+      '{"type":"assistant","timestamp":"2026-10-27T14:52:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"TAIL_OK"}],"usage":{"input_tokens":42,"output_tokens":7}}}\n';
+    fs.writeFileSync(tx, line.repeat(8000) + tail);
+    const payload = JSON.parse(fixture("fixtures/claude-code/session-end.json")) as Record<
+      string,
+      unknown
+    >;
+    payload.transcript_path = tx;
+    const result = await runHook(JSON.stringify(payload), { AGENTSLIP_HOME: home });
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+    const slips = path.join(home, "slips");
+    const svgs = fs.readdirSync(slips).filter((f) => f.endsWith(".svg"));
+    const svg = fs.readFileSync(path.join(slips, svgs[0]), "utf8");
+    expect(svg).toMatch(/42 in/);
+  });
+
+  it("compiled hook with defaultConfig does not leak secrets into the SVG", async () => {
+    const payload = JSON.parse(fixture("fixtures/claude-code/permission-request.json")) as Record<
+      string,
+      unknown
+    >;
+    payload.tool_input = {
+      command: "curl https://alice:s3cr3tpass@example.com --password=hunter2",
+      description: "OPENAI_API_KEY=sk-proj-EXAMPLEKEYNOTREAL",
+    };
+    const result = await runHook(JSON.stringify(payload));
+    homes.push(result.home);
+    expect(result.code).toBe(0);
+    const slips = path.join(result.home, "slips");
+    const svgs = fs.readdirSync(slips).filter((f) => f.endsWith(".svg"));
+    const svg = fs.readFileSync(path.join(slips, svgs[0]), "utf8");
+    expect(svg).not.toContain("s3cr3tpass");
+    expect(svg).not.toContain("hunter2");
+    expect(svg).not.toContain("sk-proj-EXAMPLEKEYNOTREAL");
   });
 });

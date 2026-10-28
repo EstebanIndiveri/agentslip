@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import path from "node:path";
 import type { AgentslipConfig } from "./types.js";
-import { configPath } from "./paths.js";
+import { configPath, dataDir } from "./paths.js";
 
 export type { AgentslipConfig };
 
@@ -12,7 +13,7 @@ export const defaultConfig = (): AgentslipConfig => ({
     port: 9100,
   },
   file: {
-    path: "agentslip.bin",
+    path: path.join(dataDir(), "agentslip.bin"),
   },
   virtual: {},
   rateLimit: {

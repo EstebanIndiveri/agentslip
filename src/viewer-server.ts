@@ -47,7 +47,7 @@ export function startViewerServer(opts: {
         return;
       }
       const abs = path.join(dir, file);
-      if (!abs.startsWith(path.resolve(dir))) {
+      if (!isInside(abs, dir)) {
         res.writeHead(400);
         res.end("bad path");
         return;
@@ -64,7 +64,7 @@ export function startViewerServer(opts: {
     }
     let rel = url.pathname === "/" ? "/index.html" : url.pathname;
     const abs = path.join(opts.staticDir, rel);
-    if (!abs.startsWith(path.resolve(opts.staticDir))) {
+    if (!isInside(abs, opts.staticDir)) {
       res.writeHead(400);
       res.end("bad path");
       return;
@@ -95,4 +95,10 @@ export function startViewerServer(opts: {
       resolve({ server, url: `http://127.0.0.1:${opts.port}/` });
     });
   });
+}
+
+function isInside(abs: string, root: string): boolean {
+  const resolved = path.resolve(root);
+  const target = path.resolve(abs);
+  return target === resolved || target.startsWith(resolved + path.sep);
 }

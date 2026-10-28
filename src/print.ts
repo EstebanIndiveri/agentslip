@@ -27,11 +27,12 @@ export async function printSlip(
     log(`skipped (${gate.reason})`);
     return { printed: false, reason: gate.reason };
   }
-  const next = recordPrint(at, state);
-  const rendered = renderSlip(data, config, next.ticketSeq);
+  const ticketNo = state.ticketSeq + 1;
+  const rendered = renderSlip(data, config, ticketNo);
 
   if (config.driver === "file") {
     const file = writeEscposFile(rendered, config.file.path);
+    recordPrint(at, state);
     log(`wrote ${file}`);
     return { printed: true, file, ticketNo: rendered.ticketNo };
   }
@@ -47,11 +48,13 @@ export async function printSlip(
       log(`printer error: ${result.error}`);
       return { printed: false, reason: result.error, ticketNo: rendered.ticketNo };
     }
+    recordPrint(at, state);
     log(`sent ticket #${rendered.ticketNo} to ${config.escpos.host}:${config.escpos.port}`);
     return { printed: true, ticketNo: rendered.ticketNo };
   }
 
   const file = writeVirtualSlip(rendered, data, config.virtual.slipsDir ?? defaultSlipsDir());
+  recordPrint(at, state);
   log(`virtual slip ${file}`);
   return { printed: true, file, ticketNo: rendered.ticketNo };
 }

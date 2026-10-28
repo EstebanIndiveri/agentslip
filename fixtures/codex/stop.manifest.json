@@ -14,6 +14,6 @@
     "stop_hook_active",
     "last_assistant_message"
   ],
-  "assumed_fields": ["model"],
-  "notes": "turn_id, stop_hook_active, last_assistant_message, and permission_mode are documented for Stop. model is a documented Codex-specific common field (not shown in the Stop-only table; listed under Common input fields). last_assistant_message may be null per the docs; this fixture uses a string. Transcript format is explicitly not a stable interface."
+  "assumed_fields": [],
+  "notes": "turn_id, stop_hook_active, last_assistant_message, and permission_mode are documented for Stop. model is a documented Codex-specific common field (listed under Common input fields, not only in the Stop-only table). last_assistant_message may be null per the docs; this fixture uses a string. Transcript format is explicitly not a stable interface."
 }

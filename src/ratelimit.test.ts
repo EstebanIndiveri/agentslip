@@ -63,4 +63,13 @@ describe("rate limit and silent hours", () => {
     const s2 = recordPrint(at, s1);
     expect(s2.ticketSeq).toBe(2);
   });
+
+  it("does not record a ticket when the TCP send fails", async () => {
+    const cfg = defaultConfig();
+    cfg.driver = "escpos-tcp";
+    cfg.escpos.port = 1;
+    const r = await printSlip(data, cfg);
+    expect(r.printed).toBe(false);
+    expect(loadState().ticketSeq).toBe(0);
+  });
 });

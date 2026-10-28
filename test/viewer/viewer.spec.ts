@@ -10,6 +10,9 @@ test("shows three example tickets and supports keyboard", async ({ page }) => {
   expect(joined).toMatch(/session/i);
   expect(joined).toMatch(/needs-you/i);
   expect(joined).toMatch(/done/i);
+  await expect(slips.nth(0).locator(".meta")).toContainText(/session/i);
+  await expect(slips.nth(1).locator(".meta")).toContainText(/needs-you/i);
+  await expect(slips.nth(2).locator(".meta")).toContainText(/done/i);
 
   await page.keyboard.press("Home");
   await expect(slips.nth(0)).toHaveAttribute("aria-selected", "true");

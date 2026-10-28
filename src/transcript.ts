@@ -4,15 +4,45 @@
  * Official hook docs (Claude Code, Codex) expose `transcript_path` but do not
  * document the file format. Fields below are assumed from public JSONL
  * conversation dumps and may change. Missing or unreadable files are ignored.
+ *
+ * MUTATION CHECK: reading a FIFO with readFileSync (no isFile guard) must hang
+ * the FIFO test. Keep TRANSCRIPT_REQUIRE_REGULAR_FILE true.
  */
 import fs from "node:fs";
 import type { TranscriptStats } from "./types.js";
 
-export function readTranscript(transcriptPath: unknown): TranscriptStats | null {
+export const TRANSCRIPT_MAX_BYTES = 256 * 1024;
+export const TRANSCRIPT_READ_MS = 200;
+export const TRANSCRIPT_REQUIRE_REGULAR_FILE = true;
+
+export async function readTranscript(transcriptPath: unknown): Promise<TranscriptStats | null> {
   if (typeof transcriptPath !== "string" || !transcriptPath) return null;
   try {
-    if (!fs.existsSync(transcriptPath)) return null;
-    const raw = fs.readFileSync(transcriptPath, "utf8");
+    const st = fs.statSync(transcriptPath);
+    if (TRANSCRIPT_REQUIRE_REGULAR_FILE && !st.isFile()) return null;
+    const size = st.size;
+    if (size <= 0) return parseTranscriptJsonl("");
+    const start = Math.max(0, size - TRANSCRIPT_MAX_BYTES);
+    const len = Math.min(size, TRANSCRIPT_MAX_BYTES);
+    const buf = Buffer.alloc(len);
+    const fh = await fs.promises.open(transcriptPath, "r");
+    try {
+      const read = fh.read(buf, 0, len, start);
+      read.catch(() => undefined);
+      await Promise.race([
+        read,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("transcript read timeout")), TRANSCRIPT_READ_MS);
+        }),
+      ]);
+    } finally {
+      await fh.close().catch(() => undefined);
+    }
+    let raw = buf.toString("utf8");
+    if (start > 0) {
+      const nl = raw.indexOf("\n");
+      if (nl >= 0) raw = raw.slice(nl + 1);
+    }
     return parseTranscriptJsonl(raw);
   } catch {
     return null;
