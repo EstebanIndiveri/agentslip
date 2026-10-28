@@ -21,7 +21,22 @@ export function startViewerServer(opts: {
 }): Promise<{ server: http.Server; url: string }> {
   const dir = slipsDir(opts.slips);
   const server = http.createServer((req, res) => {
-    const url = new URL(req.url || "/", "http://127.0.0.1");
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : opts.port;
+    // Reject attacker-controlled DNS names even when they resolve to loopback.
+    if (req.headers.host !== `127.0.0.1:${port}` && req.headers.host !== `localhost:${port}`) {
+      res.writeHead(403);
+      res.end("forbidden host");
+      return;
+    }
+    let url: URL;
+    try {
+      url = new URL(req.url || "/", "http://127.0.0.1");
+    } catch {
+      res.writeHead(400);
+      res.end("bad URL");
+      return;
+    }
     if (url.pathname === "/api/slips") {
       const items = listSlips(dir).map((s) => ({
         file: s.meta.file,
@@ -40,7 +55,14 @@ export function startViewerServer(opts: {
       return;
     }
     if (url.pathname.startsWith("/slips/")) {
-      const file = decodeURIComponent(url.pathname.slice("/slips/".length));
+      let file: string;
+      try {
+        file = decodeURIComponent(url.pathname.slice("/slips/".length));
+      } catch {
+        res.writeHead(400);
+        res.end("bad path");
+        return;
+      }
       if (file.includes("..") || path.isAbsolute(file)) {
         res.writeHead(400);
         res.end("bad path");
@@ -92,7 +114,9 @@ export function startViewerServer(opts: {
   return new Promise((resolve, reject) => {
     server.on("error", reject);
     server.listen(opts.port, "127.0.0.1", () => {
-      resolve({ server, url: `http://127.0.0.1:${opts.port}/` });
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : opts.port;
+      resolve({ server, url: `http://127.0.0.1:${port}/` });
     });
   });
 }

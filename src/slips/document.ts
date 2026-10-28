@@ -79,7 +79,7 @@ export function buildDocument(
     kv(lines, "turns", String(data.turns ?? "n/a"), cpl);
     kv(lines, "tools", String(data.tools ?? "n/a"), cpl);
     kv(lines, "tokens", data.tokens ?? "n/a", cpl);
-    kv(lines, "cost", data.cost ?? "n/a", cpl);
+    kv(lines, "cost", data.cost ? r(data.cost) : "n/a", cpl);
   }
 
   lines.push("-".repeat(Math.min(cpl, 32)));

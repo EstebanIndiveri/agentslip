@@ -49,6 +49,15 @@ const session: SlipData = {
 };
 
 describe("document", () => {
+  it("redacts secrets in transcript cost strings", () => {
+    const { document } = buildDocument(
+      { ...session, cost: "API_KEY=exampleSecretValue" },
+      { widthMm: 58, ticketNo: 1 },
+    );
+    expect(document).not.toContain("exampleSecretValue");
+    expect(document).toContain("[redacted]");
+  });
+
   it("uses 32 columns at 58mm and 48 at 80mm", () => {
     expect(columnsFor(58)).toBe(32);
     expect(columnsFor(80)).toBe(48);
