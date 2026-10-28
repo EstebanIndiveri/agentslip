@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -213,6 +213,20 @@ describe("compiled binary e2e", () => {
     expect(svgs.length).toBeGreaterThan(0);
     const svg = fs.readFileSync(path.join(slips, svgs[0]), "utf8");
     expect(svg).toMatch(/S<\/tspan><tspan[^>]*>E<\/tspan><tspan[^>]*>S<\/tspan>/);
+  });
+
+  it("compiled install --claude dry-run uses an absolute node dist/cli.js hook command", () => {
+    const dist = path.join(process.cwd(), "dist", "cli.js");
+    expect(fs.existsSync(dist)).toBe(true);
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+    homes.push(home);
+    const result = spawnSync(process.execPath, [dist, "install", "--claude"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`${process.execPath} ${dist} hook`);
+    expect(fs.existsSync(path.join(home, ".claude", "settings.json"))).toBe(false);
   });
 
   it("compiled hook with defaultConfig does not leak secrets into the SVG", async () => {

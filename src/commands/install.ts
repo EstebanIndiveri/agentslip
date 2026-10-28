@@ -13,7 +13,7 @@ import { log, logStderr } from "../log.js";
 function hookCommand(): string {
   const argv1 = process.argv[1] ? path.resolve(process.argv[1]) : "";
   try {
-    const packaged = path.resolve(fileURLToPath(new URL("../../cli.js", import.meta.url)));
+    const packaged = path.resolve(fileURLToPath(new URL("../cli.js", import.meta.url)));
     if (argv1 === packaged && fs.existsSync(packaged)) {
       return `${process.execPath} ${packaged} hook`;
     }
