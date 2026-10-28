@@ -8,15 +8,17 @@ import { printSlip } from "./print.js";
 import { parseHook } from "./hooks/parse.js";
 import { toolDetail } from "./hooks/shared.js";
 import {
+  clipField,
   redact,
   redactDeep,
+  redactDeepStats,
   REDACT_DEEP_MAX_CHARS,
   REDACT_DEEP_MAX_DEPTH,
   REDACT_MAX_CHARS,
   REDACT_SCAN_PAD,
   REDACTION_ENABLED,
 } from "./redact.js";
-import { buildDocument, NEEDS_YOU_MAX_LINES, renderSlip } from "./slips/document.js";
+import { buildDocument, renderSlip } from "./slips/document.js";
 import type { SlipData } from "./types.js";
 
 const SECRET_TEXT =
@@ -732,14 +734,18 @@ describe("REDACT_MAX_CHARS", () => {
     expect(REDACT_MAX_CHARS).toBeGreaterThanOrEqual(4 * 1024);
     expect(REDACT_MAX_CHARS).toBeLessThanOrEqual(8 * 1024);
     expect(REDACT_SCAN_PAD).toBeGreaterThanOrEqual(256);
-    const src = fs.readFileSync(path.join(process.cwd(), "src/redact.ts"), "utf8");
-    expect(src).toMatch(/REDACT_MAX_CHARS \+ REDACT_SCAN_PAD/);
-    expect(src).toMatch(/clipField/);
     const huge = "a\n".repeat(50_000);
     expect(huge.length).toBeGreaterThan(REDACT_MAX_CHARS * 2);
     const out = redact(huge);
     expect(out.length).toBeLessThanOrEqual(REDACT_MAX_CHARS);
     expect(out.length).toBeLessThan(huge.length);
+  });
+
+  it("clipField turns a 9 KB token with no spaces into …", () => {
+    const token = "a".repeat(9 * 1024);
+    expect(token.length).toBeGreaterThan(REDACT_MAX_CHARS);
+    expect(clipField(token)).toBe("…");
+    expect(redact(token)).toBe("…");
   });
 });
 
@@ -781,10 +787,6 @@ describe("Write tool_input escaped JSON (Claude Code and Codex)", () => {
   const escapedContent = String.raw`{\"apiKey\":\"EscJson13leak99\"}`;
 
   it("toolDetail redacts escaped JSON before stringify", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/hooks/shared.ts"), "utf8");
-    const fn = src.slice(src.indexOf("export function toolDetail"), src.indexOf("export function applyTranscript"));
-    expect(fn.indexOf("redactDeep")).toBeGreaterThan(-1);
-    expect(fn.indexOf("JSON.stringify")).toBeGreaterThan(fn.indexOf("redactDeep"));
     const out = toolDetail({ file_path: "src/config.ts", content: escapedContent });
     expect(out).not.toContain(needle);
     expect(out).toMatch(/\[redacted\]/);
@@ -822,6 +824,24 @@ function straddle(secret: string, needle: string): string {
   const overlap = secret.indexOf(needle) + needle.length + 4;
   const start = Math.max(0, REDACT_MAX_CHARS - overlap);
   return `${padTo(start)}${secret}\nzz\n`;
+}
+
+function fillerTokens(n: number): string {
+  return (
+    Array.from({ length: n }, (_, i) => {
+      const id = String(i).padStart(4, "0");
+      return `${"ghp"}_FILL${id}${"x".repeat(24)}`;
+    }).join("\n") + "\n"
+  );
+}
+
+/** ~30 long redactable tokens, then `secret` straddling the 8704 scan limit. */
+function filledStraddle(secret: string, needle: string): string {
+  const scanLimit = REDACT_MAX_CHARS + REDACT_SCAN_PAD;
+  const fillers = fillerTokens(30);
+  const overlap = Math.min(secret.length, Math.max(8, secret.indexOf(needle) + needle.length + 4));
+  const start = Math.max(fillers.length, scanLimit - overlap);
+  return `${fillers}${padTo(start - fillers.length)}${secret}\nzz\n`;
 }
 
 describe("boundary: secrets straddling the 8 KB cut", () => {
@@ -894,6 +914,21 @@ describe("boundary: secrets straddling the 8 KB cut", () => {
       needle: "BdSlack99",
       secret: `${"https"}://${"hooks"}.slack.com/services/${"T00"}/${"B00"}/${"BdSlack99"}${"w".repeat(16)}`,
     },
+    {
+      name: "sk-ant",
+      needle: "BdSkAnt99",
+      secret: `${"sk"}-${"ant"}-${"BdSkAnt99"}${"x".repeat(16)}`,
+    },
+    {
+      name: "gho_",
+      needle: "BdGhoL99x",
+      secret: `${"gho"}_${"BdGhoL99x"}${"y".repeat(16)}`,
+    },
+    {
+      name: "--password",
+      needle: "BdPwL99xx",
+      secret: `--${"password"}=${"BdPwL99xx"}${"z".repeat(12)}`,
+    },
   ];
 
   for (const c of cases) {
@@ -919,6 +954,33 @@ describe("boundary: secrets straddling the 8 KB cut", () => {
       expect(srf.bin).not.toContain(c.needle);
       expect(srf.tcp).not.toContain(c.needle);
     });
+
+    it(`redact() hides ${c.name} after 30 fillers at the scan-window cut`, () => {
+      const text = filledStraddle(c.secret, c.needle);
+      const scanLimit = REDACT_MAX_CHARS + REDACT_SCAN_PAD;
+      expect(text.slice(0, scanLimit)).toContain(c.needle);
+      expect(text.length).toBeGreaterThan(scanLimit);
+      const out = redact(text);
+      expect(out).not.toContain(c.needle);
+      expect(out).not.toContain(c.secret);
+    });
+
+    it(`hook slip hides filled-straddle ${c.name} in document, .bin, and TCP`, async () => {
+      const command = filledStraddle(c.secret, c.needle);
+      const p = JSON.parse(
+        fs.readFileSync(path.join(process.cwd(), "fixtures/claude-code/permission-request.json"), "utf8"),
+      ) as Record<string, unknown>;
+      p.tool_name = "Bash";
+      p.tool_input = { command, description: "run" };
+      const data = await parseHook(p, frozen);
+      expect(data).not.toBeNull();
+      expect(data?.request).not.toContain(c.needle);
+      expect(data?.request).not.toContain(c.secret);
+      const srf = await surfacesFromSlip(data as SlipData);
+      expect(srf.document).not.toContain(c.needle);
+      expect(srf.bin).not.toContain(c.needle);
+      expect(srf.tcp).not.toContain(c.needle);
+    });
   }
 });
 
@@ -934,19 +996,31 @@ describe("double-escaped JSON in a Bash command", () => {
 });
 
 describe("redactDeep budget and depth", () => {
-  it("stops after REDACT_DEEP_MAX_CHARS and substitutes …", () => {
+  it("adversarial MultiEdit finishes under 500 ms and stays near 12 KB", () => {
     expect(REDACT_DEEP_MAX_CHARS).toBeGreaterThanOrEqual(8 * 1024);
     expect(REDACT_DEEP_MAX_CHARS).toBeLessThanOrEqual(16 * 1024);
     const edits = Array.from({ length: 300 }, () => ({
-      old_string: "a",
-      new_string: "x".repeat(8 * 1024),
+      old_string: "a-".repeat(4096),
+      new_string: "eyJ-".repeat(2048),
     }));
     const t0 = performance.now();
-    const out = redactDeep({ file_path: "x.ts", edits }) as { edits: unknown[] };
+    const out = redactDeep({ file_path: "x.ts", edits });
     const ms = performance.now() - t0;
     expect(ms).toBeLessThan(500);
     expect(JSON.stringify(out)).toContain("…");
-    expect(out.edits.length).toBeLessThan(300);
+    expect(redactDeepStats.chars).toBeLessThanOrEqual(REDACT_DEEP_MAX_CHARS + REDACT_MAX_CHARS);
+    expect(redactDeepStats.calls).toBeLessThan(8);
+  });
+
+  it("does not leave raw text past the budget", () => {
+    const marker = "RawPastBudget99";
+    const out = redactDeep({
+      a: "a-".repeat(4096),
+      b: "eyJ-".repeat(2048),
+      c: marker,
+    }) as Record<string, unknown>;
+    expect(JSON.stringify(out)).not.toContain(marker);
+    expect(out.c).toBe("…");
   });
 
   it("10k nesting returns a value instead of throwing", () => {

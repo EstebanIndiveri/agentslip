@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ESC_INIT,
-  NEEDS_YOU_MAX_LINES,
   buildDocument,
   columnsFor,
   hasCutSequence,
@@ -70,10 +69,16 @@ describe("document", () => {
       request: "Bash:\n" + "word\n".repeat(400),
     };
     const doc = buildDocument(long, { widthMm: 58, ticketNo: 1 }).document;
+    const lines = doc.split("\n");
+    const start = lines.findIndex((l) => l.startsWith("`"));
+    const leftover = lines.findIndex((l) => /… \(\+\d+ lines\)/.test(l));
+    expect(start).toBeGreaterThan(-1);
+    expect(leftover).toBeGreaterThan(start);
+    const content = lines.slice(start, leftover);
+    expect(content.length).toBeGreaterThan(0);
+    expect(content.length).toBeLessThanOrEqual(8);
     const m = doc.match(/… \(\+(\d+) lines\)/);
-    expect(m).not.toBeNull();
     expect(Number(m?.[1])).toBeGreaterThan(8);
-    expect(NEEDS_YOU_MAX_LINES).toBe(8);
   });
 
   it("omits summary when missing", () => {

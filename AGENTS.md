@@ -40,13 +40,15 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   12. Remove the `NODE_ENV === "test"` guard around `AGENTSLIP_HOOK_HANG_MS` → the hang-ignored e2e fails.
   13. Remove `REDACT_MAX_CHARS` truncation / `clipField` in `src/redact.ts` → the length-cap test fails.
   14. Call `takeValue` before the name check in `redactAssignments` → 100 KB ASSIGN / URL perf tests fail.
-  15. Unbound the `{0,256}` / `{1,256}` quantifiers in CRED_URL, eyJ, and ASSIGN_HEAD → uncapped 100 KB regex tests fail.
+  15. Unbound the `{0,256}` / `{1,256}` quantifiers in CRED_URL, eyJ, and ASSIGN_HEAD → uncapped `eyJ-`.repeat(25000) / 100 KB regex tests fail.
   16. Skip `redactDeep` in `toolDetail` → Write escaped-JSON leak tests fail.
-  17. Naive slice-then-redact (no scan pad, no token clip) → boundary-straddle tests fail.
-  18. Drop the `redactDeep` character budget → MultiEdit e2e exceeds 2 s.
+  17. Hard-slice the scan window (no whitespace cut before redacting) → filled boundary-straddle tests fail.
+  18. Drop the `redactDeep` character budget → adversarial MultiEdit (`"a-".repeat(4096)` / `"eyJ-".repeat(2048)`) exceeds 500 ms, or more than ~12 KB is fed to `redact`.
   19. Drop the `redactDeep` depth guard → 10k-nest test throws.
   20. JSON_STRING `\\?` (single escape) → Bash double-escaped JSON test fails.
-  21. Drop the NEEDS YOU line cap in `src/slips/document.ts` → 8-line leftover test fails.
+  21. Drop the NEEDS YOU line cap in `src/slips/document.ts` → more than 8 request content lines print.
+  22. `clipField` hard-cut (keep the window when there is no whitespace) → 9 KB no-space token is not `"…"`.
+  23. Drop the `budget.used` guard in `walkDeep` → `RawPastBudget99` appears raw.
 
 ## Adding an agent
 

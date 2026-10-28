@@ -58,15 +58,6 @@ describe("redact ReDoS guards (100 KB)", () => {
       expect(ms).toBeLessThan(LIMIT_MS);
     });
   }
-
-  it("redactAssignments checks the name before takeValue", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/redact.ts"), "utf8");
-    const fn = src.slice(src.indexOf("function redactAssignments"), src.indexOf("function takeValue"));
-    const check = fn.indexOf("!isSecretName(name)");
-    const take = fn.indexOf("takeValue(");
-    expect(check).toBeGreaterThan(-1);
-    expect(take).toBeGreaterThan(check);
-  });
 });
 
 describe("uncapped regex complexity (100 KB, no field cap)", () => {
@@ -83,12 +74,6 @@ describe("uncapped regex complexity (100 KB, no field cap)", () => {
       expect(ms).toBeLessThan(UNCAP_MS);
     });
   }
-
-  it("eyJ uses {1,256} so the unbounded mutation cannot hide", () => {
-    const c = complexityCases().find((x) => x.name === "eyJ");
-    expect(c).toBeTruthy();
-    expect(c?.re.source).toMatch(/\[a-zA-Z0-9_-\]\{1,256\}/);
-  });
 });
 
 function runHook(

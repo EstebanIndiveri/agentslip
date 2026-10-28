@@ -12,9 +12,12 @@
  * MUTATION CHECK: remove REDACT_MAX_CHARS truncation → length-cap test fails.
  * MUTATION CHECK: call takeValue before the name check → 100 KB ASSIGN perf fails.
  * MUTATION CHECK: drop bounded quantifiers → uncapped 100 KB regex tests fail.
- * MUTATION CHECK: naive slice-then-redact (no scan pad / no token clip) →
- * boundary-straddle tests fail.
- * MUTATION CHECK: drop redactDeep budget → MultiEdit e2e exceeds 2 s.
+ * MUTATION CHECK: hard-slice the scan window (no whitespace cut) →
+ * filled boundary-straddle tests fail.
+ * MUTATION CHECK: clipField hard-cut (keep the window when there is no space) →
+ * 9 KB no-space token test fails.
+ * MUTATION CHECK: drop redactDeep budget → adversarial MultiEdit exceeds 500 ms
+ * and text past the budget appears raw.
  * MUTATION CHECK: drop redactDeep depth guard → 10k-nest test throws.
  * MUTATION CHECK: JSON_STRING `\\?` (single escape) → Bash double-escaped JSON fails.
  */
@@ -144,8 +147,9 @@ function valueLooksSecret(value: string): boolean {
 export function redact(text: string, enabled = true): string {
   if (!REDACTION_ENABLED || !enabled || text.length === 0) return text;
   const scanLimit = REDACT_MAX_CHARS + REDACT_SCAN_PAD;
-  const scan = text.length > scanLimit ? text.slice(0, scanLimit) : text;
-  let out = scan;
+  // Cut at the last whitespace before scanning so a split token cannot remain
+  // after earlier [redacted] replacements shrink the text below REDACT_MAX_CHARS.
+  let out = text.length > scanLimit ? clipField(text, scanLimit) : text;
   out = out.replace(PEM_BLOCK, "[redacted]");
   for (const re of API_KEY_PATTERNS) {
     re.lastIndex = 0;
@@ -166,8 +170,8 @@ export function redact(text: string, enabled = true): string {
 
 /**
  * Clip at the last whitespace before `max` so a split token (partial ghp_, open
- * JSON, URL with no @) is dropped rather than printed.
- * MUTATION CHECK: slice(0, max-1)+"…" instead → boundary-straddle tests fail.
+ * JSON, URL with no @) is dropped rather than printed. No whitespace → "…".
+ * MUTATION CHECK: return the hard-sliced window when cut<=0 → 9 KB no-space fails.
  */
 export function clipField(text: string, max = REDACT_MAX_CHARS): string {
   if (text.length <= max) return text;
@@ -191,10 +195,15 @@ export function clipField(text: string, max = REDACT_MAX_CHARS): string {
  * Walk objects/arrays and redact string leaves. Used on hook tool_input
  * before JSON.stringify so Write content is not double-escaped past JSON_STRING.
  * MUTATION CHECK: skip this in toolDetail → Write escaped-JSON leak tests fail.
- * MUTATION CHECK: drop the budget → MultiEdit / many-strings e2e exceeds 2 s.
+ * MUTATION CHECK: drop the budget check → adversarial MultiEdit exceeds 500 ms
+ * and a unique marker past the budget appears raw.
  * MUTATION CHECK: drop the depth guard → 10k-nest test throws RangeError.
  */
+export const redactDeepStats = { chars: 0, calls: 0 };
+
 export function redactDeep(value: unknown, enabled = true): unknown {
+  redactDeepStats.chars = 0;
+  redactDeepStats.calls = 0;
   return walkDeep(value, enabled, 0, { used: 0 });
 }
 
@@ -207,27 +216,17 @@ function walkDeep(
   if (depth >= REDACT_DEEP_MAX_DEPTH) return "…";
   if (budget.used >= REDACT_DEEP_MAX_CHARS) return "…";
   if (typeof value === "string") {
-    budget.used += Math.min(value.length, REDACT_MAX_CHARS);
+    budget.used += value.length;
+    redactDeepStats.chars += value.length;
+    redactDeepStats.calls += 1;
     return redact(value, enabled);
   }
   if (Array.isArray(value)) {
-    const out: unknown[] = [];
-    for (let i = 0; i < value.length; i++) {
-      if (budget.used >= REDACT_DEEP_MAX_CHARS) {
-        out.push("…");
-        break;
-      }
-      out.push(walkDeep(value[i], enabled, depth + 1, budget));
-    }
-    return out;
+    return value.map((item) => walkDeep(item, enabled, depth + 1, budget));
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (budget.used >= REDACT_DEEP_MAX_CHARS) {
-        out[k] = "…";
-        break;
-      }
       out[k] = walkDeep(v, enabled, depth + 1, budget);
     }
     return out;
@@ -242,7 +241,8 @@ export function complexityCases(): { name: string; re: RegExp; input: string }[]
     {
       name: "eyJ",
       re: API_KEY_PATTERNS[API_KEY_PATTERNS.length - 1],
-      input: `eyJ${"a".repeat(size)}`,
+      // Repeated "eyJ-" is superlinear if the {1,256} bound becomes `+`.
+      input: `${"eyJ-".repeat(25_000)}`,
     },
     {
       name: "CRED_URL",
