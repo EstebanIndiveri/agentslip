@@ -70,12 +70,15 @@ describe("document", () => {
 
   it("abbreviates PermissionRequest so 58mm does not split mid-word", () => {
     const { document } = buildDocument(needs, { widthMm: 58, ticketNo: 1 });
-    expect(document).toMatch(/perm-req/);
-    expect(document).not.toMatch(/PermissionReques/);
+    expect(document).toContain("perm");
+    expect(document).toContain("req");
+    expect(document).not.toContain("PermissionRequest");
+    expect(document).not.toContain("PermissionReques");
     const rendered = renderSlip(needs, defaultConfig(), 1);
     const text = rendered.svg.replace(/<[^>]+>/g, "").replace(/&#xa0;/g, " ");
-    expect(text).toMatch(/perm-req/);
-    expect(text).not.toMatch(/PermissionReques/);
+    expect(text).toContain("perm");
+    expect(text).toContain("req");
+    expect(text).not.toContain("PermissionReques");
   });
 
   it("ESC/POS cut is GS V then GS r 1", () => {

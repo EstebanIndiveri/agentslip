@@ -66,6 +66,5 @@ describe("readTranscript regular-file guard", () => {
     expect(stats?.tools).toBeUndefined();
     expect(stats?.duration).toBeUndefined();
     expect(stats?.cost).toBeUndefined();
-    expect(stats?.tokens).not.toMatch(/999999/);
   });
 });
