@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Record docs/media/agentslip-demo.gif
- * Left: a terminal running agentslip hook
- * Right: the virtual paper roll receiving slips
- * No vendor mascots or logos.
+ * Record docs/media/agentslip-demo.gif (~15 s).
+ * Left: the real compiled hook command in a real temp git repo.
+ * Right: virtual roll. DONE then NEEDS YOU. No vendor logos.
+ * Does not run Claude Code or Codex; the terminal shows the command that ran.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -17,25 +17,28 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outGif = path.join(root, "docs/media/agentslip-demo.gif");
 const frameDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-gif-"));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-demo-"));
+const gitRepo = fs.mkdtempSync(path.join(os.tmpdir(), "receipt-demo-"));
 const port = 4188;
+const dist = path.join(root, "dist/cli.js");
+if (!fs.existsSync(dist)) {
+  console.error("dist/cli.js missing; run npm run build first");
+  process.exit(1);
+}
 
 function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function cliArgs(sub) {
-  const dist = path.join(root, "dist/cli.js");
-  if (fs.existsSync(dist)) return [dist, ...sub];
-  return [path.join(root, "node_modules/tsx/dist/cli.mjs"), "src/cli.ts", ...sub];
+function sh(cmd, cwd = gitRepo) {
+  const r = spawnSync("bash", ["-lc", cmd], { cwd, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`${cmd}\n${r.stderr || r.stdout}`);
+  return (r.stdout || "").trim();
 }
 
 function env() {
   return {
     ...process.env,
     AGENTSLIP_HOME: home,
-    AGENTSLIP_GIT_REPO: "demo-app",
-    AGENTSLIP_GIT_BRANCH: "main",
-    AGENTSLIP_GIT_SHORTSTAT: "1 file changed, 3 insertions(+)",
     TZ: "UTC",
   };
 }
@@ -57,9 +60,62 @@ function waitHttp(url, timeoutMs = 8000) {
   });
 }
 
+function initGitRepo() {
+  sh("git init -b fix/parser");
+  sh("git config user.email demo@agentslip.example");
+  sh("git config user.name agentslip-demo");
+  fs.writeFileSync(path.join(gitRepo, "README.md"), "demo-app\n");
+  sh("git add README.md && git commit -m init");
+  fs.writeFileSync(
+    path.join(gitRepo, "parser.js"),
+    "export function parse(x) {\n  return String(x).trim();\n}\n",
+  );
+  fs.appendFileSync(path.join(gitRepo, "README.md"), "uncommitted note\n");
+}
+
+function hookPayload(event) {
+  const base = {
+    session_id: "demo-session",
+    transcript_path: path.join(gitRepo, "no-such-transcript.jsonl"),
+    cwd: gitRepo,
+    permission_mode: "default",
+    hook_event_name: event,
+  };
+  if (event === "Stop") {
+    return {
+      ...base,
+      stop_hook_active: false,
+      last_assistant_message:
+        "I've completed the refactoring. Parser now trims input before parsing.",
+    };
+  }
+  return {
+    ...base,
+    tool_name: "Bash",
+    tool_input: {
+      command: "rm -rf node_modules",
+      description: "Remove node_modules directory",
+    },
+  };
+}
+
+function runHook(payload) {
+  return spawnSync(process.execPath, [dist, "hook"], {
+    cwd: gitRepo,
+    input: JSON.stringify(payload),
+    env: env(),
+    encoding: "utf8",
+  });
+}
+
 async function main() {
+  initGitRepo();
+  const shortstat = sh("git diff --shortstat");
+  const branch = sh("git rev-parse --abbrev-ref HEAD");
+  const repoName = path.basename(gitRepo);
+
   fs.mkdirSync(path.dirname(outGif), { recursive: true });
-  const viewer = spawn(process.execPath, cliArgs(["view", "--port", String(port), "--no-open"]), {
+  const viewer = spawn(process.execPath, [dist, "view", "--port", String(port), "--no-open"], {
     cwd: root,
     env: env(),
     stdio: "pipe",
@@ -76,9 +132,10 @@ async function main() {
   html,body{margin:0;height:100%;background:#111;color:#d6d6d6;font-family:ui-monospace,Menlo,Consolas,monospace}
   .row{display:flex;height:100%}
   .pane{width:50%;height:100%;overflow:hidden}
-  .term{padding:16px;white-space:pre-wrap;font-size:13px;line-height:1.45;background:#0d1117}
+  .term{padding:14px;white-space:pre-wrap;font-size:12px;line-height:1.4;background:#0d1117}
   iframe{border:0;width:100%;height:100%;background:#2a2a2a}
   .ok{color:#7ee787}
+  .dim{color:#8b949e}
 </style>
 </head>
 <body>
@@ -89,54 +146,72 @@ async function main() {
 </body>
 </html>`);
 
-  const lines = ["$ agentslip test"];
+  const lines = [];
   const paint = async () => {
     await page.evaluate((t) => {
       document.getElementById("term").textContent = t;
     }, lines.join("\n"));
   };
-  const shot = (i) => page.screenshot({ path: path.join(frameDir, `frame-${String(i).padStart(2, "0")}.png`) });
+  const frames = [];
+  const shot = async () => {
+    const i = frames.length;
+    const p = path.join(frameDir, `frame-${String(i).padStart(3, "0")}.png`);
+    await page.screenshot({ path: p });
+    frames.push(p);
+  };
 
+  lines.push(`$ git -C ${gitRepo} rev-parse --abbrev-ref HEAD`);
+  lines.push(branch);
+  lines.push(`$ git -C ${gitRepo} diff --shortstat`);
+  lines.push(` ${shortstat}`);
+  lines.push(`$ node dist/cli.js hook   # compiled binary; cwd=${repoName}`);
   await paint();
-  await shot(0);
+  await shot();
 
-  const fixtures = [
-    { file: "fixtures/claude-code/stop.json", label: "Stop → DONE" },
-    { file: "fixtures/claude-code/permission-request.json", label: "PermissionRequest → NEEDS YOU" },
-    { file: "fixtures/claude-code/session-end.json", label: "SessionEnd → SESSION" },
-  ];
-  let n = 1;
-  for (const fx of fixtures) {
-    lines.push(`$ agentslip hook    # ${fx.label}`);
-    await paint();
-    const payload = fs.readFileSync(path.join(root, fx.file));
-    const child = spawnSync(process.execPath, cliArgs(["hook"]), {
-      cwd: root,
-      input: payload,
-      env: env(),
-      encoding: "utf8",
-    });
-    const last = (child.stderr || "ok").trim().split("\n").pop();
-    lines.push(last);
-    await paint();
-    await page.locator("#roll").evaluate((el) => {
-      const f = el;
-      f.src = f.src.split("?")[0] + "?t=" + Date.now();
-    });
-    await wait(1600);
-    await shot(n++);
+  const stop = hookPayload("Stop");
+  const stopRes = runHook(stop);
+  lines.push((stopRes.stderr || "").trim().split("\n").pop());
+  lines.push((stopRes.stdout || "").trim() || "{}");
+  await paint();
+  await page.locator("#roll").evaluate((el) => {
+    el.src = el.src.split("?")[0] + "?t=" + Date.now();
+  });
+  for (let i = 0; i < 8; i++) {
+    await wait(200);
+    await shot();
+  }
+
+  lines.push(`$ node dist/cli.js hook   # PermissionRequest → NEEDS YOU`);
+  await paint();
+  const need = hookPayload("PermissionRequest");
+  const needRes = runHook(need);
+  lines.push((needRes.stderr || "").trim().split("\n").pop());
+  lines.push((needRes.stdout || "").trim() || "{}");
+  await paint();
+  await page.locator("#roll").evaluate((el) => {
+    el.src = el.src.split("?")[0] + "?t=" + Date.now();
+  });
+  for (let i = 0; i < 10; i++) {
+    await wait(200);
+    await shot();
   }
   lines.push("$");
   await paint();
-  await wait(800);
-  await shot(n);
+  await wait(400);
+  await shot();
 
   await browser.close();
   viewer.kill("SIGTERM");
   encodeGif(frameDir, outGif);
+  const st = fs.statSync(outGif);
   fs.rmSync(frameDir, { recursive: true, force: true });
   fs.rmSync(home, { recursive: true, force: true });
-  console.log(`wrote ${outGif} (${fs.statSync(outGif).size} bytes)`);
+  fs.rmSync(gitRepo, { recursive: true, force: true });
+  console.log(`wrote ${outGif} (${st.size} bytes, ${frames.length} frames)`);
+  if (st.size >= 2 * 1024 * 1024) {
+    console.error("GIF is over 2 MB");
+    process.exit(1);
+  }
 }
 
 function encodeGif(frames, dest) {
@@ -147,11 +222,11 @@ function encodeGif(frames, dest) {
       [
         "-y",
         "-framerate",
-        "1/3",
+        "5",
         "-i",
-        path.join(frames, "frame-%02d.png"),
+        path.join(frames, "frame-%03d.png"),
         "-vf",
-        "scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+        "scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=64[p];[s1][p]paletteuse=dither=bayer",
         dest,
       ],
       { encoding: "utf8" },
@@ -167,8 +242,8 @@ from PIL import Image
 import sys
 d = Path(sys.argv[1])
 frames = sorted(d.glob("frame-*.png"))
-imgs = [Image.open(f).convert("P", palette=Image.ADAPTIVE) for f in frames]
-imgs[0].save(sys.argv[2], save_all=True, append_images=imgs[1:], duration=320, loop=0, optimize=True)`,
+imgs = [Image.open(f).convert("P", palette=Image.ADAPTIVE, colors=64) for f in frames]
+imgs[0].save(sys.argv[2], save_all=True, append_images=imgs[1:], duration=200, loop=0, optimize=True)`,
       frames,
       dest,
     ],

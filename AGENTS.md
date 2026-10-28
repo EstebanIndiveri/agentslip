@@ -3,9 +3,9 @@
 ## Environment
 
 - Node.js 22 LTS or newer.
-- `npm ci`
+- `npm ci` (runs `prepare` → `npm run build`)
 - Chromium for Playwright: `npx playwright install chromium` (add `--with-deps` on Linux if browsers fail to launch).
-- GitHub Actions is **not** used. Do not add files under `.github/workflows/`. An inactive example lives at `docs/ci-example.yml`.
+- GitHub Actions is **not** used. Do not add files under `.github/workflows/`. Issue forms under `.github/ISSUE_TEMPLATE/` are allowed. An inactive example lives at `docs/ci-example.yml`.
 
 ## Commands
 

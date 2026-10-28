@@ -2,15 +2,20 @@
   "name": "agentslip",
   "version": "0.1.0",
   "private": true,
-  "description": "Receipts for your coding agents: a paper slip when it's done, when it needs you, and what the session cost.",
+  "description": "Receipts for your coding agents. Claude Code and Codex hooks that print a thermal ESC/POS slip or a virtual paper roll.",
   "type": "module",
   "bin": {
     "agentslip": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "viewer/dist"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc -p tsconfig.build.json && vite build --config viewer/vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p viewer/tsconfig.json",
     "test": "npm run build && vitest run && playwright test",
@@ -18,14 +23,24 @@
     "test:viewer": "playwright test",
     "viewer": "vite --config viewer/vite.config.ts",
     "demo": "node dist/cli.js test",
-    "record-demo": "node scripts/record-demo.mjs"
+    "record-demo": "node scripts/record-demo.mjs",
+    "social-preview": "node scripts/make-social-preview.mjs",
+    "build:pages": "node scripts/build-pages.mjs"
   },
   "keywords": [
-    "receipt",
-    "escpos",
-    "hooks",
     "claude-code",
-    "codex"
+    "claude-code-hooks",
+    "codex",
+    "codex-cli",
+    "escpos",
+    "esc-pos",
+    "thermal-printer",
+    "receipt-printer",
+    "receipt",
+    "hooks",
+    "notifications",
+    "coding-agent",
+    "cli"
   ],
   "license": "MIT",
   "dependencies": {
