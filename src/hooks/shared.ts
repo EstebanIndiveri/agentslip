@@ -11,7 +11,6 @@ export function summarize(text: string | undefined): string | undefined {
 
 export function applyTranscript(data: SlipData, tx: TranscriptStats | null): void {
   if (!tx) return;
-  if (tx.truncated) return;
   if (!data.duration && tx.duration) data.duration = tx.duration;
   if (data.kind === "session") {
     if (tx.turns !== undefined) data.turns = tx.turns;

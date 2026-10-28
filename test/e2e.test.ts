@@ -266,6 +266,7 @@ describe("compiled binary e2e", () => {
             ...process.env,
             AGENTSLIP_HOME: home,
             AGENTSLIP_HOOK_HANG_MS: "5000",
+            NODE_ENV: "test",
             AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
             TZ: "UTC",
           },

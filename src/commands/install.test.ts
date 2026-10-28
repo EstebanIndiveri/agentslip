@@ -49,15 +49,20 @@ describe("install", () => {
   });
 
   it("--write creates a single backup and merges hooks", () => {
-    const { dir, file } = scratch();
+    const { dir, file, home } = scratch();
     fs.writeFileSync(
       file,
       JSON.stringify({ model: "opus", permissions: { allow: ["Read"] }, hooks: { Stop: [] } }),
     );
     runInstall(["--claude", "--write"]);
+    const firstBak = fs.readFileSync(path.join(dir, "settings.json.bak"), "utf8");
+    expect(firstBak).not.toMatch(/agentslip hook/);
+    const log1 = fs.readFileSync(path.join(home, "agentslip.log"), "utf8");
+    expect(log1).toMatch(/backup settings\.json\.bak/);
     runInstall(["--claude", "--write"]);
-    const backups = fs.readdirSync(dir).filter((f) => f.endsWith(".bak"));
-    expect(backups).toEqual(["settings.json.bak"]);
+    const backups = fs.readdirSync(dir).filter((f) => f.endsWith(".bak")).sort();
+    expect(backups).toEqual(["settings.json.agentslip.bak", "settings.json.bak"]);
+    expect(fs.readFileSync(path.join(dir, "settings.json.bak"), "utf8")).toBe(firstBak);
     const written = JSON.parse(fs.readFileSync(file, "utf8")) as {
       model: string;
       permissions: unknown;
@@ -168,5 +173,46 @@ describe("install", () => {
     fs.writeFileSync(bak, preserved);
     runInstall(["--claude", "--write"]);
     expect(fs.readFileSync(bak, "utf8")).toBe(preserved);
+  });
+
+  it("writes settings.json.agentslip.bak when a foreign .bak already exists", () => {
+    const { dir, file, home } = scratch();
+    fs.writeFileSync(file, JSON.stringify({ model: "opus", other: true }));
+    const bak = path.join(dir, "settings.json.bak");
+    const foreign = JSON.stringify({ note: "not-agentslip", keep: true });
+    fs.writeFileSync(bak, foreign);
+    runInstall(["--claude", "--write"]);
+    expect(fs.readFileSync(bak, "utf8")).toBe(foreign);
+    const alt = path.join(dir, "settings.json.agentslip.bak");
+    expect(fs.existsSync(alt)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(alt, "utf8"))).toMatchObject({ model: "opus", other: true });
+    const log = fs.readFileSync(path.join(home, "agentslip.log"), "utf8");
+    expect(log).toMatch(/backup settings\.json\.agentslip\.bak/);
+    expect(log).not.toMatch(/backup settings\.json\.bak\b/);
+  });
+
+  it("does not claim a backup when installing a new file", () => {
+    const { file, home } = scratch();
+    runInstall(["--claude", "--write"]);
+    expect(fs.existsSync(`${file}.bak`)).toBe(false);
+    const log = fs.readFileSync(path.join(home, "agentslip.log"), "utf8");
+    expect(log).toMatch(/no backup/);
+    expect(log).not.toMatch(/backup settings\.json\.bak/);
+  });
+
+  it("skips a new backup when both .bak files already exist", () => {
+    const { dir, file, home } = scratch();
+    fs.writeFileSync(file, JSON.stringify({ model: "opus" }));
+    fs.writeFileSync(path.join(dir, "settings.json.bak"), JSON.stringify({ keep: "bak" }));
+    fs.writeFileSync(path.join(dir, "settings.json.agentslip.bak"), JSON.stringify({ keep: "alt" }));
+    runInstall(["--claude", "--write"]);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, "settings.json.bak"), "utf8"))).toEqual({
+      keep: "bak",
+    });
+    expect(
+      JSON.parse(fs.readFileSync(path.join(dir, "settings.json.agentslip.bak"), "utf8")),
+    ).toEqual({ keep: "alt" });
+    const log = fs.readFileSync(path.join(home, "agentslip.log"), "utf8");
+    expect(log).toMatch(/no new backup/);
   });
 });

@@ -34,6 +34,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   6. Let `install --write` overwrite invalid JSON → invalid-JSON install test fails.
   7. Drop `r()` on `data.branch` in `src/slips/document.ts` → branch document-string leak test fails.
   8. Remove `writeJsonAndExit()` from the hard-timeout path in `src/commands/hook.ts` → hard-timeout e2e fails.
+  9. Drop camelCase / glued-uppercase branches from `isSecretName` in `src/redact.ts` → camelCase and glued assignment leak tests fail.
 
 ## Adding an agent
 

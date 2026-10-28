@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Build a static virtual-roll preview (3 example slips, relative paths, .nojekyll).
+ * SESSION uses the small transcript fixture so duration/turns/tools/tokens are real.
  * Output: pages/  (not committed on the main branch; pushed as orphan gh-pages)
  */
 import { spawnSync } from "node:child_process";
@@ -18,23 +19,36 @@ if (!fs.existsSync(cli)) {
 }
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-pages-"));
-const r = spawnSync(process.execPath, [cli, "test"], {
-  cwd: root,
-  env: {
-    ...process.env,
-    AGENTSLIP_HOME: home,
-    AGENTSLIP_GIT_REPO: "demo-app",
-    AGENTSLIP_GIT_BRANCH: "main",
-    AGENTSLIP_GIT_SHORTSTAT: "1 file changed, 3 insertions(+)",
-    AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
-    TZ: "UTC",
-  },
-  encoding: "utf8",
-});
-if (r.status !== 0) {
-  console.error(r.stderr || r.stdout);
-  process.exit(r.status || 1);
+const env = {
+  ...process.env,
+  AGENTSLIP_HOME: home,
+  AGENTSLIP_GIT_REPO: "demo-app",
+  AGENTSLIP_GIT_BRANCH: "main",
+  AGENTSLIP_GIT_SHORTSTAT: "1 file changed, 3 insertions(+)",
+  AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
+  TZ: "UTC",
+};
+
+function hook(relFixture, patch = {}) {
+  const payload = JSON.parse(fs.readFileSync(path.join(root, relFixture), "utf8"));
+  Object.assign(payload, patch);
+  const r = spawnSync(process.execPath, [cli, "hook"], {
+    cwd: root,
+    env,
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+  });
+  if (r.status !== 0) {
+    console.error(r.stderr || r.stdout);
+    process.exit(r.status || 1);
+  }
 }
+
+hook("fixtures/claude-code/stop.json");
+hook("fixtures/claude-code/permission-request.json");
+hook("fixtures/claude-code/session-end.json", {
+  transcript_path: path.join(root, "fixtures/transcripts/claude-session.jsonl"),
+});
 
 const srcSlips = path.join(home, "slips");
 const svgs = fs.readdirSync(srcSlips).filter((f) => f.endsWith(".svg")).sort();

@@ -2,7 +2,7 @@
 
 Claude Code and Codex hooks that print a small paper slip when your agent is **done**, when it **needs you**, and when the **session ends**. Use a network ESC/POS thermal printer (58 mm or 80 mm), or the built-in **virtual paper roll** in your browser — no hardware required.
 
-The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts secrets before anything is rendered, and sends nothing anywhere except the printer you configure on your LAN. Tokens and cost are printed only when the session transcript contains them; otherwise the slip says `n/a`.
+The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts [common secret patterns](#privacy) before a slip is rendered, and sends nothing anywhere except the printer you configure on your LAN. Tokens and cost are printed only when the session transcript contains them; otherwise the slip says `n/a`.
 
 `agentslip hook` reads the JSON that Claude Code or Codex sends on stdin:
 
@@ -67,7 +67,7 @@ agentslip install --claude
 agentslip install --codex
 ```
 
-Nothing is written until you pass `--write`. That mode copies a single `settings.json.bak` (or `hooks.json.bak`) next to the file if one does not already exist. An existing `.bak` is left in place, including one that already contains agentslip. Invalid JSON, or a `hooks` value that is not an object, aborts and writes nothing.
+Nothing is written until you pass `--write`. That mode copies `settings.json.bak` (or `hooks.json.bak`) when that path is free. If a `.bak` already exists, the current file is copied to `settings.json.agentslip.bak` instead; neither backup is overwritten. The log line says which backup was written, or that none was. Invalid JSON, or a `hooks` value that is not an object, aborts and writes nothing.
 
 Claude Code (`~/.claude/settings.json`), after `npm link`:
 
@@ -142,7 +142,7 @@ v0.1 sends ESC/POS over **TCP port 9100** on your LAN. Bluetooth, USB, CUPS, and
 
 - No network except the printer host you configure on the LAN
 - No telemetry, accounts, or cloud backend
-- Secrets are redacted before render: API-key-shaped tokens (including `gho_` / `ghs_` / `ghu_` / `ghr_`, `glpat-`, `hf_`, Stripe `sk_live_` / `rk_live_`), `Authorization: Basic`, credential URLs in any scheme, names that end with `_PASS` / `_PASSWORD` / `_SECRET` / `_TOKEN` / `_KEY` (not words like `bypass=` or `hotkey:`), `--password=` and `--password <pw>`, mysql `-p<pw>`, PEM private-key blocks (including a BEGIN with no END), Slack `hooks.slack.com/services/…` URLs, typical `.env` lines. Long lines are truncated. Repo, branch, and session reason are redacted too.
+- Common secret patterns are redacted before render (this is not a complete secret scanner): API-key-shaped tokens (including `gho_` / `ghs_` / `ghu_` / `ghr_`, `glpat-`, `hf_`, Stripe `sk_live_` / `rk_live_`), `Authorization: Basic`, credential URLs in any scheme, names with a camelCase suffix (`apiKey`, `accessToken`, `clientSecret`), glued uppercase suffixes (`APIKEY=`, `GITHUBTOKEN=`, `DBPASSWORD=`, `MYAPP_APIKEY=`), underscore suffixes (`*_PASS` / `*_PASSWORD` / `*_SECRET` / `*_TOKEN` / `*_KEY`), hyphenated headers (`x-api-key:` — the `:` or `=` is kept), `--password=` and `--password <pw>`, `mysql` / `mysqldump` / `mysqladmin` / `mysqlimport` `-p<pw>`, PEM private-key blocks (including a BEGIN with no END), Slack `hooks.slack.com/services/…` URLs, typical `.env` lines. Plain words `bypass`, `hotkey`, `monkey`, and `keyboard` are not treated as secret names. Long lines are truncated. Repo, branch, and session reason are redacted too.
 - Default cap: 20 tickets per hour. Optional silent hours in `rateLimit.silentHours`.
 - Tokens and cost print **only** when the session transcript actually contains them. Otherwise `n/a`. They are never estimated. If the transcript file is larger than 256 KB, only the tail is read and duration, turns, tools, tokens, and cost print as `n/a` (the tail is not the whole session).
 

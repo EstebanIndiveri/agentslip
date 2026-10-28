@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 — 2026-10-28
+
+- Redaction matches camelCase JSON keys (`apiKey`, `accessToken`, `clientSecret`) and glued uppercase names (`APIKEY`, `GITHUBTOKEN`, `DBPASSWORD`, `MYAPP_APIKEY`). Plain words `bypass`, `hotkey`, `monkey`, and `keyboard` are not redacted.
+- Assignment redaction keeps the original `=` or `:` separator (for example `x-api-key: [redacted]`).
+- `mysql -p` redaction also covers `mysqldump`, `mysqladmin`, and `mysqlimport`.
+- `install --write` logs whether it wrote `.bak`, `.agentslip.bak`, or no backup. A foreign existing `.bak` is left in place; the current file is copied to `.agentslip.bak`.
+- `.map` files are excluded from the npm pack tarball.
+- Demo GIF uses a fixed repo name `demo-app`. The gh-pages SESSION sample is built from the small transcript fixture (not all `n/a`).
+
 ## 0.1.0 — 2026-10-28
 
 First release. Not published to npm (`private: true`).

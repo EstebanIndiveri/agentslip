@@ -17,7 +17,9 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outGif = path.join(root, "docs/media/agentslip-demo.gif");
 const frameDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-gif-"));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-demo-"));
-const gitRepo = fs.mkdtempSync(path.join(os.tmpdir(), "receipt-demo-"));
+const gitParent = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-gif-repo-"));
+const gitRepo = path.join(gitParent, "demo-app");
+fs.mkdirSync(gitRepo);
 const port = 4188;
 const dist = path.join(root, "dist/cli.js");
 if (!fs.existsSync(dist)) {
@@ -206,7 +208,7 @@ async function main() {
   const st = fs.statSync(outGif);
   fs.rmSync(frameDir, { recursive: true, force: true });
   fs.rmSync(home, { recursive: true, force: true });
-  fs.rmSync(gitRepo, { recursive: true, force: true });
+  fs.rmSync(gitParent, { recursive: true, force: true });
   console.log(`wrote ${outGif} (${st.size} bytes, ${frames.length} frames)`);
   if (st.size >= 2 * 1024 * 1024) {
     console.error("GIF is over 2 MB");

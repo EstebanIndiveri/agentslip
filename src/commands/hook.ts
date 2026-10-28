@@ -47,13 +47,15 @@ export async function runHook(): Promise<void> {
     }
     /**
      * MUTATION CHECK: remove writeJsonAndExit from the hard-timeout path.
-     * AGENTSLIP_HOOK_HANG_MS (test-only) sleeps here so HARD_MS fires first.
+     * Test-only hang (NODE_ENV=test) so HARD_MS fires first.
      */
-    const hangMs = Number(process.env.AGENTSLIP_HOOK_HANG_MS);
-    if (Number.isFinite(hangMs) && hangMs > 0) {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, hangMs);
-      });
+    if (process.env.NODE_ENV === "test") {
+      const hangMs = Number(process.env.AGENTSLIP_HOOK_HANG_MS);
+      if (Number.isFinite(hangMs) && hangMs > 0) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, hangMs);
+        });
+      }
     }
     const data = await parseHook(payload, now());
     if (!data) {
