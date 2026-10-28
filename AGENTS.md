@@ -39,7 +39,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   11. Drop `GENERIC_KEY_NAMES` / glued-prefix checks so `primaryKey`, `token: string;`, JSX `key=`, `{"key":"Enter"}`, and `TURKEY=` are treated as secrets → false-positive tests fail.
   12. Remove the `NODE_ENV === "test"` guard around `AGENTSLIP_HOOK_HANG_MS` → the hang-ignored e2e fails.
   13. Remove `REDACT_MAX_CHARS` truncation / `clipField` in `src/redact.ts` → the length-cap test fails.
-  14. Call `takeValue` before the name check in `redactAssignments` → 100 KB ASSIGN / URL perf tests fail.
+  14. Call `takeValue` before the name check in `redactAssignments` → `redact("a=".repeat(4352))` exceeds 50 ms.
   15. Unbound the `{0,256}` / `{1,256}` quantifiers in CRED_URL, eyJ, and ASSIGN_HEAD → uncapped `eyJ-`.repeat(25000) / 100 KB regex tests fail.
   16. Skip `redactDeep` in `toolDetail` → Write escaped-JSON leak tests fail.
   17. Hard-slice the scan window (no whitespace cut before redacting) → filled boundary-straddle tests fail.
@@ -49,6 +49,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   21. Drop the NEEDS YOU line cap in `src/slips/document.ts` → more than 8 request content lines print.
   22. `clipField` hard-cut (keep the window when there is no whitespace) → 9 KB no-space token is not `"…"`.
   23. Drop the `budget.used` guard in `walkDeep` → `RawPastBudget99` appears raw.
+  24. Drop `JSON_STRING_UNCLOSED` → unclosed `{"apiKey":"…` / `{'password': 'a b …` and space-in-value filled-straddle tests fail.
 
 ## Adding an agent
 

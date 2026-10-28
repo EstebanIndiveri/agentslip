@@ -67,6 +67,13 @@ describe("redact ReDoS guards (100 KB)", () => {
     expect(check).toBeGreaterThan(-1);
     expect(take).toBeGreaterThan(check);
   });
+
+  it('redact("a=".repeat(4352)) finishes under 50 ms', () => {
+    const input = "a=".repeat(4352);
+    expect(input.length).toBe(8704);
+    const ms = timed("a= x4352", input);
+    expect(ms).toBeLessThan(50);
+  });
 });
 
 describe("uncapped regex complexity (100 KB, no field cap)", () => {

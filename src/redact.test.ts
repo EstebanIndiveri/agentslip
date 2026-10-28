@@ -835,13 +835,13 @@ function fillerTokens(n: number): string {
   );
 }
 
-/** ~30 long redactable tokens, then `secret` straddling the 8704 scan limit. */
-function filledStraddle(secret: string, needle: string): string {
+/** Long redactable tokens, then `secret` straddling the 8704 scan limit. */
+function filledStraddle(secret: string, needle: string, fillers = 30): string {
   const scanLimit = REDACT_MAX_CHARS + REDACT_SCAN_PAD;
-  const fillers = fillerTokens(30);
+  const head = fillerTokens(fillers);
   const overlap = Math.min(secret.length, Math.max(8, secret.indexOf(needle) + needle.length + 4));
-  const start = Math.max(fillers.length, scanLimit - overlap);
-  return `${fillers}${padTo(start - fillers.length)}${secret}\nzz\n`;
+  const start = Math.max(head.length, scanLimit - overlap);
+  return `${head}${padTo(start - head.length)}${secret}\nzz\n`;
 }
 
 describe("boundary: secrets straddling the 8 KB cut", () => {
@@ -929,6 +929,21 @@ describe("boundary: secrets straddling the 8 KB cut", () => {
       needle: "BdPwL99xx",
       secret: `--${"password"}=${"BdPwL99xx"}${"z".repeat(12)}`,
     },
+    {
+      name: "JSON password with spaces",
+      needle: "SpcJson99",
+      secret: `{${'"'}${"password"}${'"'}: ${'"'}${"SpcJson99"} horse battery staple extra${'"'}}`,
+    },
+    {
+      name: "escaped JSON password with spaces",
+      needle: "SpcEsc99",
+      secret: `{${"\\"}${'"'}${"password"}${"\\"}${'"'}: ${"\\"}${'"'}${"SpcEsc99"} horse battery staple extra${"\\"}${'"'}}`,
+    },
+    {
+      name: "Python dict password with spaces",
+      needle: "SpcPy99xx",
+      secret: `{${"'"}${"password"}${"'"}: ${"'"}${"SpcPy99xx"} horse battery staple extra${"'"}}`,
+    },
   ];
 
   for (const c of cases) {
@@ -956,7 +971,8 @@ describe("boundary: secrets straddling the 8 KB cut", () => {
     });
 
     it(`redact() hides ${c.name} after 30 fillers at the scan-window cut`, () => {
-      const text = filledStraddle(c.secret, c.needle);
+      const nFill = c.name.includes("spaces") ? 40 : 30;
+      const text = filledStraddle(c.secret, c.needle, nFill);
       const scanLimit = REDACT_MAX_CHARS + REDACT_SCAN_PAD;
       expect(text.slice(0, scanLimit)).toContain(c.needle);
       expect(text.length).toBeGreaterThan(scanLimit);
@@ -966,7 +982,7 @@ describe("boundary: secrets straddling the 8 KB cut", () => {
     });
 
     it(`hook slip hides filled-straddle ${c.name} in document, .bin, and TCP`, async () => {
-      const command = filledStraddle(c.secret, c.needle);
+      const command = filledStraddle(c.secret, c.needle, c.name.includes("spaces") ? 40 : 30);
       const p = JSON.parse(
         fs.readFileSync(path.join(process.cwd(), "fixtures/claude-code/permission-request.json"), "utf8"),
       ) as Record<string, unknown>;
@@ -982,6 +998,24 @@ describe("boundary: secrets straddling the 8 KB cut", () => {
       expect(srf.tcp).not.toContain(c.needle);
     });
   }
+});
+
+describe("unclosed JSON and dict values", () => {
+  it("redacts an unclosed JSON apiKey at end of field", () => {
+    const needle = "UnclApi99";
+    const text = `{${'"'}${"apiKey"}${'"'}:${'"'}${needle}`;
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+  });
+
+  it("redacts an unclosed Python dict password at end of field", () => {
+    const needle = "UnclDict99";
+    const text = `{${"'"}${"password"}${"'"}: ${"'"}a b ${needle}`;
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+  });
 });
 
 describe("double-escaped JSON in a Bash command", () => {

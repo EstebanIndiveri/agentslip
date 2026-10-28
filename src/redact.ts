@@ -10,7 +10,7 @@
  * MUTATION CHECK: drop GENERIC_KEY_NAMES / glued-prefix checks so primaryKey,
  * token: string, JSX key=, {"key":"Enter"}, and TURKEY= tests must fail.
  * MUTATION CHECK: remove REDACT_MAX_CHARS truncation → length-cap test fails.
- * MUTATION CHECK: call takeValue before the name check → 100 KB ASSIGN perf fails.
+ * MUTATION CHECK: call takeValue before the name check → `a=`.repeat(4352) exceeds 50 ms.
  * MUTATION CHECK: drop bounded quantifiers → uncapped 100 KB regex tests fail.
  * MUTATION CHECK: hard-slice the scan window (no whitespace cut) →
  * filled boundary-straddle tests fail.
@@ -20,6 +20,8 @@
  * and text past the budget appears raw.
  * MUTATION CHECK: drop redactDeep depth guard → 10k-nest test throws.
  * MUTATION CHECK: JSON_STRING `\\?` (single escape) → Bash double-escaped JSON fails.
+ * MUTATION CHECK: drop JSON_STRING_UNCLOSED → unclosed `{"apiKey":"…` and
+ * space-in-value filled-straddle tests fail.
  */
 export const REDACTION_ENABLED = true;
 
@@ -73,6 +75,13 @@ const ASSIGN_HEAD = /\b([A-Za-z_][A-Za-z0-9_-]{0,255})(\s{0,8})([=:])(\s{0,8})/g
 /** "name": "value", \"name\":\"value\", \\\"name\\\":\\\"value\\\", 'name': 'value' */
 const JSON_STRING =
   /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])([^"'\\]{0,4096})(\4)/g;
+/**
+ * Same as JSON_STRING but the value runs to end of field with no closing quote.
+ * Covers clipField cutting inside `"correct horse…"` and a truncated `{"apiKey":"…`.
+ * MUTATION CHECK: drop this → unclosed JSON / dict tests fail.
+ */
+const JSON_STRING_UNCLOSED =
+  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])([^"'\\]{0,4096})$/g;
 /** "name": 1234 or \"name\": 1234 */
 const JSON_NUMBER =
   /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(-?\d[\d.]{0,63})/g;
@@ -198,6 +207,9 @@ export function clipField(text: string, max = REDACT_MAX_CHARS): string {
  * MUTATION CHECK: drop the budget check → adversarial MultiEdit exceeds 500 ms
  * and a unique marker past the budget appears raw.
  * MUTATION CHECK: drop the depth guard → 10k-nest test throws RangeError.
+ *
+ * redactDeepStats is a test-only mutable global: chars/calls walkDeep actually
+ * fed to redact().
  */
 export const redactDeepStats = { chars: 0, calls: 0 };
 
@@ -283,6 +295,14 @@ function redactJsonLike(text: string): string {
     (m, q1: string, name: string, q2: string, q3: string, val: string, q4: string) => {
       if (!isSecretName(name, val)) return m;
       return `${q1}${name}${q2}: ${q3}[redacted]${q4}`;
+    },
+  );
+  JSON_STRING_UNCLOSED.lastIndex = 0;
+  out = out.replace(
+    JSON_STRING_UNCLOSED,
+    (m, q1: string, name: string, q2: string, q3: string, val: string) => {
+      if (!isSecretName(name, val)) return m;
+      return `${q1}${name}${q2}: ${q3}[redacted]`;
     },
   );
   JSON_NUMBER.lastIndex = 0;
