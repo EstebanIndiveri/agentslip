@@ -60,7 +60,12 @@ describe("readTranscript regular-file guard", () => {
     expect(ms).toBeLessThan(500);
     expect(stats?.lastAssistant).toBe("TAIL_MARKER");
     expect(stats?.lastAssistant).not.toBe("HEAD_ONLY_MARKER");
-    expect(stats?.tokens).toBe("42 in / 7 out");
+    expect(stats?.truncated).toBe(true);
+    expect(stats?.tokens).toBeUndefined();
+    expect(stats?.turns).toBeUndefined();
+    expect(stats?.tools).toBeUndefined();
+    expect(stats?.duration).toBeUndefined();
+    expect(stats?.cost).toBeUndefined();
     expect(stats?.tokens).not.toMatch(/999999/);
   });
 });

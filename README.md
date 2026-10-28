@@ -52,11 +52,13 @@ npm install -g github:EstebanIndiveri/agentslip
 
 That GitHub URL install **cannot be tested while the repo is private** (npm gets 404). Do not treat it as verified. A local equivalent that *was* verified: `npm pack` then `npm install -g` of the tarball, and `npm link`, both followed by `agentslip test` in a clean HOME.
 
-Without a global install, call the compiled file with an absolute path. `install --write` then stores that same absolute command in the hook settings:
+Without a global install, call the compiled file with an absolute path. `install --write` then stores that same command in the hook settings, **quoted** so a path with spaces works:
 
 ```bash
 node /absolute/path/to/agentslip/dist/cli.js install --claude --write
 ```
+
+If `agentslip` is already on `PATH`, install stores `agentslip hook`. Otherwise it stores `'<process.execPath>' '<absolute dist/cli.js>' hook`. That absolute form **pins the Node binary** (`process.execPath`). Switching Node with nvm or fnm will break the hook until you re-run `install --write`, or until you `npm link` so the command is `agentslip hook`.
 
 ## Install the hook (dry-run)
 
@@ -65,7 +67,7 @@ agentslip install --claude
 agentslip install --codex
 ```
 
-Nothing is written until you pass `--write`. That mode copies a single `settings.json.bak` (or `hooks.json.bak`) next to the file — the same backup path is overwritten on later runs — then merges the hook block. Invalid JSON, or a `hooks` value that is not an object, aborts and writes nothing.
+Nothing is written until you pass `--write`. That mode copies a single `settings.json.bak` (or `hooks.json.bak`) next to the file if one does not already exist. An existing `.bak` is left in place, including one that already contains agentslip. Invalid JSON, or a `hooks` value that is not an object, aborts and writes nothing.
 
 Claude Code (`~/.claude/settings.json`), after `npm link`:
 
@@ -83,7 +85,7 @@ Claude Code (`~/.claude/settings.json`), after `npm link`:
 }
 ```
 
-The Notification matcher skips `permission_prompt` so a PermissionRequest does not print two NEEDS YOU slips.
+The Notification matcher skips `permission_prompt` so a PermissionRequest does not print two NEEDS YOU slips. Claude Code also sends `idle_prompt` about a minute after Stop; agentslip skips that Notification when a DONE slip for the same session was printed in the last two minutes.
 
 Codex (`~/.codex/hooks.json`):
 
@@ -134,19 +136,19 @@ SVG and ESC/POS come from the **same** [ReceiptLine](https://github.com/receiptl
 
 ## Why not Bluetooth?
 
-v0.1 sends ESC/POS over **TCP port 9100** on your LAN. Bluetooth, USB, CUPS, and pocket “cat printers” are not implemented. Bluetooth is planned for **v0.2**. A network printer (Ethernet or Wi-Fi that speaks raw 9100) is the path that matches this release.
+v0.1 sends ESC/POS over **TCP port 9100** on your LAN. Bluetooth, USB, CUPS, and pocket “cat printers” are not implemented. Bluetooth is under consideration. A network printer (Ethernet or Wi-Fi that speaks raw 9100) is the path that matches this release.
 
 ## Privacy
 
 - No network except the printer host you configure on the LAN
 - No telemetry, accounts, or cloud backend
-- Secrets are redacted before render: API-key-shaped tokens (including `gho_` / `ghs_` / `ghu_` / `ghr_`, `glpat-`, `hf_`, Stripe `sk_live_` / `rk_live_`), `Authorization: Basic`, credential URLs in any scheme, `*_PASS` / `PASSWORD` / `SECRET` assignments, `--password=`, PEM private-key blocks, typical `.env` lines. Long lines are truncated. Repo, branch, and session reason are redacted too.
+- Secrets are redacted before render: API-key-shaped tokens (including `gho_` / `ghs_` / `ghu_` / `ghr_`, `glpat-`, `hf_`, Stripe `sk_live_` / `rk_live_`), `Authorization: Basic`, credential URLs in any scheme, names that end with `_PASS` / `_PASSWORD` / `_SECRET` / `_TOKEN` / `_KEY` (not words like `bypass=` or `hotkey:`), `--password=` and `--password <pw>`, mysql `-p<pw>`, PEM private-key blocks (including a BEGIN with no END), Slack `hooks.slack.com/services/…` URLs, typical `.env` lines. Long lines are truncated. Repo, branch, and session reason are redacted too.
 - Default cap: 20 tickets per hour. Optional silent hours in `rateLimit.silentHours`.
-- Tokens and cost print **only** when the session transcript actually contains them. Otherwise `n/a`. They are never estimated.
+- Tokens and cost print **only** when the session transcript actually contains them. Otherwise `n/a`. They are never estimated. If the transcript file is larger than 256 KB, only the tail is read and duration, turns, tools, tokens, and cost print as `n/a` (the tail is not the whole session).
 
 ## What was checked / limitations
 
-Checked in Cursor Cloud (no physical printer): parsers against fixtures copied from the official hook docs, redaction, SVG + ESC/POS snapshots (ESC `@` start, `GS V` then `GS r 1` cut), a local TCP fake printer, hook exit 0 with the printer down, with invalid JSON, with never-closing stdin, and with a FIFO or large transcript file, rate limit, `install` dry-run vs `--write` (invalid JSON abort, single `.bak`, uninstall), Vitest, Playwright Chromium on the viewer.
+Checked in Cursor Cloud (no physical printer): parsers against fixtures copied from the official hook docs, redaction, SVG + ESC/POS snapshots (ESC `@` start, `GS V` then `GS r 1` cut), a local TCP fake printer, hook exit 0 with the printer down, with invalid JSON, with never-closing stdin, and with a FIFO or large transcript file (SESSION fields `n/a` when the file exceeds 256 KB), rate limit, `install` dry-run vs `--write` (invalid JSON abort, single `.bak` that is not overwritten if it already contains agentslip, uninstall that leaves foreign `cli.js hook` / `agentslip-fork` commands), Vitest, Playwright Chromium on the viewer.
 
 **No hardware thermal printer model was verified.** Do not treat v0.1 as “works on TM-XX / RP-YY” until someone tests a real device.
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defaultConfig } from "./config.js";
 import { printSlip } from "./print.js";
 import { redact, REDACTION_ENABLED } from "./redact.js";
-import { renderSlip } from "./slips/document.js";
+import { buildDocument, renderSlip } from "./slips/document.js";
 import type { SlipData } from "./types.js";
 
 const SECRET_TEXT =
@@ -119,6 +119,18 @@ describe("redact", () => {
     expect(out).toContain("--password=[redacted]");
   });
 
+  it("redacts mysql -p concatenated passwords", () => {
+    const out = redact("mysql -uroot -phunter2");
+    expect(out).not.toContain("hunter2");
+    expect(out).toContain("-p[redacted]");
+  });
+
+  it("redacts --password with a space", () => {
+    const out = redact("mysql --password hunter2 --host=localhost");
+    expect(out).not.toContain("hunter2");
+    expect(out).toContain("--password=[redacted]");
+  });
+
   it("redacts PEM private key blocks", () => {
     const pem =
       "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCSECRETKEYMATERIAL\n-----END PRIVATE KEY-----";
@@ -126,6 +138,31 @@ describe("redact", () => {
     expect(out).not.toContain("MIIEvQIBADANBgkqhkiG9w0BAQEFAASCSECRETKEYMATERIAL");
     expect(out).not.toContain("BEGIN PRIVATE KEY");
     expect(out).toMatch(/\[redacted\]/);
+  });
+
+  it("redacts a PEM block with no END line", () => {
+    const pem =
+      "-----BEGIN RSA PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCSECRETKEYMATERIAL\nstill-secret";
+    const out = redact(pem);
+    expect(out).not.toContain("SECRETKEYMATERIAL");
+    expect(out).not.toContain("BEGIN RSA PRIVATE KEY");
+    expect(out).toMatch(/\[redacted\]/);
+  });
+
+  it("redacts Slack webhook URLs", () => {
+    const out = redact(
+      "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+    );
+    expect(out).not.toContain("T00000000");
+    expect(out).not.toContain("hooks.slack.com");
+    expect(out).toMatch(/\[redacted\]/);
+  });
+
+  it("does not redact bypass= or hotkey:", () => {
+    const out = redact("bypass=true hotkey:ctrl+k NAME=ok");
+    expect(out).toContain("bypass=true");
+    expect(out).toContain("hotkey:ctrl+k");
+    expect(out).toContain("NAME=ok");
   });
 
   it("redacts repo, branch, and reason on the slip", () => {
@@ -153,6 +190,24 @@ describe("redact", () => {
     expect(hex).not.toContain("s3cr3tpass");
     expect(hex).not.toContain("sk_live_51ExampleStripeKey");
     expect(hex).not.toContain("letmein");
+  });
+
+  it("redacts branch in the receiptline document string", () => {
+    const secret = "sk_live_51ExampleStripeKey";
+    const { document } = buildDocument(
+      {
+        kind: "done",
+        agent: "Claude Code",
+        event: "Stop",
+        sessionId: "sec",
+        time: frozen,
+        repo: "demo-app",
+        branch: secret,
+      },
+      { widthMm: 58, ticketNo: 1 },
+    );
+    expect(document).not.toContain(secret);
+    expect(document).toMatch(/\[redacted\]/);
   });
 });
 

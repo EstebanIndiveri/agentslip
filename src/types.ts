@@ -39,6 +39,8 @@ export type TranscriptStats = {
   cost?: string;
   /** Best-effort last assistant text if the payload did not include it. */
   lastAssistant?: string;
+  /** True when only the last 256 KB of the file was read. Counts are omitted. */
+  truncated?: boolean;
 };
 
 export type AgentslipConfig = {
@@ -73,6 +75,9 @@ export type AgentslipConfig = {
 export type AppState = {
   ticketSeq: number;
   prints: { t: number }[];
+  /** Session id of the last successful DONE slip, for idle_prompt dedupe. */
+  lastDoneSession?: string;
+  lastDoneAt?: number;
 };
 
 export type RenderedSlip = {

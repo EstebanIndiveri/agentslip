@@ -126,4 +126,47 @@ describe("install", () => {
     };
     expect(JSON.stringify(written)).not.toMatch(/agentslip/);
   });
+
+  it("keeps foreign cli.js hook and agentslip-fork scripts through install and uninstall", () => {
+    const { file } = scratch();
+    const foreignStop = [
+      { hooks: [{ type: "command", command: "node ~/tools/other-notifier/dist/cli.js hook", timeout: 2 }] },
+      { hooks: [{ type: "command", command: "~/src/agentslip-fork/my-own-script.sh", timeout: 2 }] },
+    ];
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        model: "opus",
+        hooks: { Stop: foreignStop },
+      }),
+    );
+    runInstall(["--claude", "--write"]);
+    const afterInstall = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      hooks: Record<string, unknown[]>;
+    };
+    expect(JSON.stringify(afterInstall.hooks.Stop)).toMatch(/other-notifier\/dist\/cli\.js hook/);
+    expect(JSON.stringify(afterInstall.hooks.Stop)).toMatch(/agentslip-fork\/my-own-script\.sh/);
+    expect(JSON.stringify(afterInstall.hooks.Stop)).toMatch(/agentslip hook/);
+    runUninstall(["--claude", "--write"]);
+    const after = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      model: string;
+      hooks: Record<string, unknown[]>;
+    };
+    expect(after.model).toBe("opus");
+    expect(JSON.stringify(after.hooks.Stop)).toMatch(/other-notifier\/dist\/cli\.js hook/);
+    expect(JSON.stringify(after.hooks.Stop)).toMatch(/agentslip-fork\/my-own-script\.sh/);
+    expect(JSON.stringify(after)).not.toMatch(/"command": "agentslip hook"/);
+  });
+
+  it("does not overwrite an existing bak that already contains agentslip", () => {
+    const { dir, file } = scratch();
+    fs.writeFileSync(file, JSON.stringify({ model: "opus" }));
+    const bak = path.join(dir, "settings.json.bak");
+    const preserved = JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "agentslip hook" }] }] },
+    });
+    fs.writeFileSync(bak, preserved);
+    runInstall(["--claude", "--write"]);
+    expect(fs.readFileSync(bak, "utf8")).toBe(preserved);
+  });
 });

@@ -43,7 +43,13 @@ export async function readTranscript(transcriptPath: unknown): Promise<Transcrip
       const nl = raw.indexOf("\n");
       if (nl >= 0) raw = raw.slice(nl + 1);
     }
-    return parseTranscriptJsonl(raw);
+    const stats = parseTranscriptJsonl(raw);
+    if (start > 0) {
+      // Tail sums are not session totals. Keep lastAssistant; omit duration /
+      // turns / tools / tokens / cost so the slip prints n/a instead of a lie.
+      return { lastAssistant: stats.lastAssistant, truncated: true };
+    }
+    return stats;
   } catch {
     return null;
   }

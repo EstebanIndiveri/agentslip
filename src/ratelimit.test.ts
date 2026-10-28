@@ -72,4 +72,27 @@ describe("rate limit and silent hours", () => {
     expect(r.printed).toBe(false);
     expect(loadState().ticketSeq).toBe(0);
   });
+
+  it("skips idle_prompt Notification after a recent Stop for the same session", async () => {
+    const cfg = defaultConfig();
+    cfg.driver = "virtual";
+    const t0 = new Date("2026-10-27T15:00:00.000Z");
+    const stop = await printSlip({ ...data, time: t0, sessionId: "sess-1" }, cfg);
+    expect(stop.printed).toBe(true);
+    const idle: SlipData = {
+      kind: "needs-you",
+      agent: "Claude Code",
+      event: "Notification",
+      sessionId: "sess-1",
+      time: new Date(t0.getTime() + 60_000),
+      request: "idle_prompt: Claude is waiting for your input",
+    };
+    const skipped = await printSlip(idle, cfg);
+    expect(skipped.printed).toBe(false);
+    expect(skipped.reason).toBe("idle-prompt-dedupe");
+    const otherSession = await printSlip({ ...idle, sessionId: "sess-2" }, cfg);
+    expect(otherSession.printed).toBe(true);
+    const later = await printSlip({ ...idle, time: new Date(t0.getTime() + 121_000) }, cfg);
+    expect(later.printed).toBe(true);
+  });
 });

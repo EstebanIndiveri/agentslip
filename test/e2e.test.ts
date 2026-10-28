@@ -213,21 +213,88 @@ describe("compiled binary e2e", () => {
     expect(svgs.length).toBeGreaterThan(0);
     const svg = fs.readFileSync(path.join(slips, svgs[0]), "utf8");
     expect(svg).toMatch(/S<\/tspan><tspan[^>]*>E<\/tspan><tspan[^>]*>S<\/tspan>/);
+    const text = svg.replace(/<[^>]+>/g, "").replace(/&#xa0;/g, " ");
+    expect(text).toMatch(/n\/a/);
+    expect(text).not.toMatch(/42 in/);
+    expect(text).not.toMatch(/TAIL_OK/);
   });
 
-  it("compiled install --claude dry-run uses an absolute node dist/cli.js hook command", () => {
+  it("compiled install --claude dry-run quotes an absolute node dist/cli.js hook command", () => {
     const dist = path.join(process.cwd(), "dist", "cli.js");
     expect(fs.existsSync(dist)).toBe(true);
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
     homes.push(home);
     const result = spawnSync(process.execPath, [dist, "install", "--claude"], {
       encoding: "utf8",
-      env: { ...process.env, HOME: home },
+      env: { ...process.env, HOME: home, PATH: "/usr/bin:/bin" },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`${process.execPath} ${dist} hook`);
+    expect(result.stdout).toContain(`'${process.execPath}' '${dist}' hook`);
     expect(fs.existsSync(path.join(home, ".claude", "settings.json"))).toBe(false);
   });
+
+  it("quotes the hook command when the install path contains spaces", () => {
+    const distSrc = path.join(process.cwd(), "dist");
+    expect(fs.existsSync(path.join(distSrc, "cli.js"))).toBe(true);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-sp-"));
+    homes.push(tmp);
+    const spaced = path.join(tmp, "My Tools", "agentslip");
+    fs.cpSync(distSrc, path.join(spaced, "dist"), { recursive: true });
+    const cli = path.join(spaced, "dist", "cli.js");
+    fs.symlinkSync(
+      path.join(process.cwd(), "node_modules"),
+      path.join(spaced, "node_modules"),
+    );
+    const result = spawnSync(process.execPath, [cli, "install", "--claude"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: tmp, PATH: "/usr/bin:/bin" },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`'${process.execPath}' '${cli}' hook`);
+    expect(result.stdout).toContain("My Tools");
+  });
+
+  it("hard timeout still writes {} and exits 0", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+    homes.push(home);
+    const { cmd, args } = bin();
+    const started = Date.now();
+    const result = await new Promise<{ stdout: string; stderr: string; code: number | null; ms: number }>(
+      (resolve, reject) => {
+        const child = spawn(cmd, [...args, "hook"], {
+          env: {
+            ...process.env,
+            AGENTSLIP_HOME: home,
+            AGENTSLIP_HOOK_HANG_MS: "5000",
+            AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
+            TZ: "UTC",
+          },
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (d) => {
+          stdout += String(d);
+        });
+        child.stderr.on("data", (d) => {
+          stderr += String(d);
+        });
+        child.on("error", reject);
+        const killer = setTimeout(() => {
+          child.kill("SIGKILL");
+        }, 4000);
+        child.on("close", (code) => {
+          clearTimeout(killer);
+          resolve({ stdout, stderr, code, ms: Date.now() - started });
+        });
+        child.stdin.write(fixture("fixtures/claude-code/stop.json"));
+        child.stdin.end();
+      },
+    );
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2500);
+    expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).toMatch(/hard timeout/);
+  }, 8000);
 
   it("compiled hook with defaultConfig does not leak secrets into the SVG", async () => {
     const payload = JSON.parse(fixture("fixtures/claude-code/permission-request.json")) as Record<

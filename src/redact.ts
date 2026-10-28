@@ -29,14 +29,24 @@ const API_KEY_PATTERNS: RegExp[] = [
 ];
 
 const CRED_URL = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(?:[^/\s@]*:[^@/\s]+@)/g;
-const ENV_ASSIGN =
-  /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS|API_KEY))\s*[=:]\s*([^\s,;]+)/gi;
-const JSON_SECRET =
-  /("(?:[A-Za-z0-9_]+(?:KEY|TOKEN|SECRET|PASSWORD|PASS))"\s*:\s*")([^"]+)(")/gi;
-const FLAG_PASSWORD = /--password=\S+/gi;
-const PEM_BLOCK = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
+/** Underscore-suffixed secret names, or those names as a whole identifier. */
+const SECRET_IDENT =
+  "(?:[A-Za-z_][A-Za-z0-9_]*_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS)|PASSWORD|SECRET|TOKEN|PASSWD|PASS|KEY)";
+const ENV_ASSIGN = new RegExp(String.raw`\b(${SECRET_IDENT})\s*[=:]\s*([^\s,;]+)`, "gi");
+const JSON_SECRET = new RegExp(
+  String.raw`("(?:[A-Za-z0-9_]+_(?:KEY|TOKEN|SECRET|PASSWORD|PASS)|PASSWORD|SECRET|TOKEN|PASS)"\s*:\s*")([^"]+)(")`,
+  "gi",
+);
+const FLAG_PASSWORD = /--password(?:=|\s+)\S+/gi;
+const PEM_BLOCK =
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
+const SLACK_WEBHOOK = /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/gi;
+const MYSQL_DASH_P = /\bmysql\b[^\n]*/gi;
 
 const LONG_LINE = 160;
+
+const ENV_NAME_SECRET =
+  /(_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS)|^(?:PASSWORD|SECRET|TOKEN|PASSWD|PASS|KEY))$/i;
 
 export function redact(text: string, enabled = true): string {
   if (!REDACTION_ENABLED || !enabled || text.length === 0) return text;
@@ -50,6 +60,8 @@ export function redact(text: string, enabled = true): string {
   out = out.replace(ENV_ASSIGN, "$1=[redacted]");
   out = out.replace(JSON_SECRET, "$1[redacted]$3");
   out = out.replace(FLAG_PASSWORD, "--password=[redacted]");
+  out = out.replace(SLACK_WEBHOOK, "[redacted]");
+  out = out.replace(MYSQL_DASH_P, (cmd) => cmd.replace(/\s-p\S+/g, " -p[redacted]"));
   out = redactEnvBlock(out);
   return truncateLongLines(out);
 }
@@ -61,7 +73,8 @@ function redactEnvBlock(text: string): string {
       const m = line.match(/^(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/);
       if (!m) return line;
       const name = m[1].replace(/^\s*(?:export\s+)?/, "");
-      if (/(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS)$/i.test(name) || name === "DATABASE_URL") {
+      ENV_NAME_SECRET.lastIndex = 0;
+      if (ENV_NAME_SECRET.test(name) || name === "DATABASE_URL") {
         return `${m[1]}=[redacted]`;
       }
       return line;

@@ -1,7 +1,9 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseHook } from "./parse.js";
+import { TRANSCRIPT_MAX_BYTES } from "../transcript.js";
 
 const frozen = new Date("2026-10-27T15:00:00.000Z");
 
@@ -74,6 +76,32 @@ describe("parsers", () => {
 
   it("returns null for unknown events", async () => {
     expect(await parseHook({ hook_event_name: "PreToolUse" }, frozen)).toBeNull();
+  });
+
+  it("truncated transcript does not copy tail sums as session totals", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-tx-"));
+    const file = path.join(dir, "tx.jsonl");
+    const pad =
+      '{"type":"user","timestamp":"2026-10-27T14:00:00.000Z","message":{"role":"user","content":"pad"}}\n';
+    const tail =
+      '{"type":"assistant","timestamp":"2026-10-27T14:52:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"TAIL"}],"usage":{"input_tokens":42,"output_tokens":7}}}\n';
+    let body = "";
+    while (Buffer.byteLength(body + tail) <= TRANSCRIPT_MAX_BYTES) body += pad;
+    fs.writeFileSync(file, body + tail);
+    const payload = load("fixtures/claude-code/session-end.json") as Record<string, unknown>;
+    payload.transcript_path = file;
+    let d;
+    try {
+      d = await parseHook(payload, frozen);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    expect(d?.kind).toBe("session");
+    expect(d?.tokens).toBe("n/a");
+    expect(d?.cost).toBe("n/a");
+    expect(d?.turns).toBe("n/a");
+    expect(d?.tools).toBe("n/a");
+    expect(d?.duration).toBeUndefined();
   });
 
   it("best-effort transcript fills tokens and leaves cost n/a", async () => {

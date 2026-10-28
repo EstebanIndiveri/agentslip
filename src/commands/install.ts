@@ -5,20 +5,62 @@ import { fileURLToPath } from "node:url";
 import { log, logStderr } from "../log.js";
 
 /**
- * When invoked as `node dist/cli.js install`, store that absolute command so
- * Claude Code / Codex can run the hook without a global `agentslip` on PATH.
- * `npm link` leaves argv[1] as the bin name, so we keep `agentslip hook`.
- * Never treat some other package's dist/cli.js (e.g. vitest) as ours.
+ * Shell-quote a path so Claude Code / Codex can exec it when it contains
+ * spaces or other special characters.
  */
-function hookCommand(): string {
-  const argv1 = process.argv[1] ? path.resolve(process.argv[1]) : "";
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+function ourCliPath(): string | undefined {
   try {
     const packaged = path.resolve(fileURLToPath(new URL("../cli.js", import.meta.url)));
-    if (argv1 === packaged && fs.existsSync(packaged)) {
-      return `${process.execPath} ${packaged} hook`;
+    if (fs.existsSync(packaged)) return fs.realpathSync(packaged);
+  } catch {
+    // fall through
+  }
+  return undefined;
+}
+
+function findOnPath(name: string): string | undefined {
+  const pathEnv = process.env.PATH ?? "";
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, name);
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      // continue
+    }
+  }
+  return undefined;
+}
+
+function sameFile(a: string, b: string): boolean {
+  try {
+    if (fs.existsSync(a) && fs.existsSync(b)) {
+      return fs.realpathSync(a) === fs.realpathSync(b);
     }
   } catch {
     // fall through
+  }
+  return path.resolve(a) === path.resolve(b);
+}
+
+/**
+ * Prefer `agentslip hook` when `agentslip` is on PATH.
+ * Otherwise, when invoked as `node dist/cli.js install`, store a quoted
+ * absolute `node` + this package's `dist/cli.js` + `hook`. That form pins
+ * `process.execPath` (nvm/fnm users should re-run install after switching
+ * Node, or use `npm link` so the command stays `agentslip hook`).
+ * Never treat some other package's dist/cli.js as ours.
+ */
+export function hookCommand(): string {
+  if (findOnPath("agentslip")) return "agentslip hook";
+  const cli = ourCliPath();
+  const argv1 = process.argv[1] ? path.resolve(process.argv[1]) : "";
+  if (cli && argv1 && sameFile(argv1, cli)) {
+    return `${shellQuote(process.execPath)} ${shellQuote(cli)} hook`;
   }
   return "agentslip hook";
 }
@@ -112,6 +154,25 @@ function backupPath(file: string): string {
   return `${file}.bak`;
 }
 
+/**
+ * Copy `file` to `file.bak` once. Never overwrite an existing backup —
+ * especially one that already contains agentslip (that would replace the
+ * original pre-install file with a later agentslip-aware snapshot).
+ */
+function maybeBackup(file: string): void {
+  const bak = backupPath(file);
+  if (fs.existsSync(bak)) {
+    try {
+      const raw = fs.readFileSync(bak, "utf8");
+      if (raw.includes("agentslip")) return;
+    } catch {
+      return;
+    }
+    return;
+  }
+  fs.copyFileSync(file, bak);
+}
+
 function readSettings(file: string): Record<string, unknown> {
   const raw = fs.readFileSync(file, "utf8");
   let existing: unknown;
@@ -135,7 +196,7 @@ function mergeJson(file: string, hooks: Record<string, unknown[]>): void {
   let existing: Record<string, unknown> = {};
   if (fs.existsSync(file)) {
     existing = readSettings(file);
-    fs.copyFileSync(file, backupPath(file));
+    maybeBackup(file);
   }
   const hookMap = (existing.hooks as Record<string, unknown[]>) ?? {};
   for (const [event, entries] of Object.entries(hooks)) {
@@ -148,8 +209,92 @@ function mergeJson(file: string, hooks: Record<string, unknown[]>): void {
   fs.writeFileSync(file, `${JSON.stringify(existing, null, 2)}\n`);
 }
 
-function listContainsAgentslip(list: unknown[]): boolean {
-  return JSON.stringify(list).includes("agentslip") || JSON.stringify(list).includes(" cli.js hook");
+export function tokenizeCommand(cmd: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < cmd.length) {
+    while (i < cmd.length && cmd[i] === " ") i += 1;
+    if (i >= cmd.length) break;
+    if (cmd[i] === "'") {
+      let s = "";
+      i += 1;
+      while (i < cmd.length) {
+        if (cmd.startsWith(`'\\''`, i)) {
+          s += "'";
+          i += 4;
+          continue;
+        }
+        if (cmd[i] === "'") {
+          i += 1;
+          break;
+        }
+        s += cmd[i];
+        i += 1;
+      }
+      out.push(s);
+      continue;
+    }
+    if (cmd[i] === '"') {
+      let s = "";
+      i += 1;
+      while (i < cmd.length && cmd[i] !== '"') {
+        if (cmd[i] === "\\" && i + 1 < cmd.length) {
+          s += cmd[i + 1];
+          i += 2;
+          continue;
+        }
+        s += cmd[i];
+        i += 1;
+      }
+      if (cmd[i] === '"') i += 1;
+      out.push(s);
+      continue;
+    }
+    let s = "";
+    while (i < cmd.length && cmd[i] !== " ") {
+      s += cmd[i];
+      i += 1;
+    }
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * True only for the command this package writes: `agentslip hook`, or
+ * quoted/unquoted `node <this package's dist/cli.js> hook`.
+ * Does not match a foreign `…/cli.js hook` or a path that merely contains
+ * the substring "agentslip".
+ */
+export function isAgentslipHandler(h: unknown): boolean {
+  if (!h || typeof h !== "object") return false;
+  const cmd = (h as { command?: unknown }).command;
+  if (typeof cmd !== "string") return false;
+  const tokens = tokenizeCommand(cmd.trim());
+  const hash = tokens.indexOf("#");
+  const parts = hash >= 0 ? tokens.slice(0, hash) : tokens;
+  if (parts.length === 2 && parts[0] === "agentslip" && parts[1] === "hook") return true;
+  if (parts.length === 3 && parts[2] === "hook") {
+    const cli = ourCliPath();
+    if (!cli) return false;
+    const cliArg = parts[1];
+    try {
+      if (fs.existsSync(cliArg) && fs.realpathSync(cliArg) === cli) return true;
+    } catch {
+      // fall through
+    }
+    return path.resolve(cliArg) === cli;
+  }
+  return false;
+}
+
+export function listContainsAgentslip(list: unknown[]): boolean {
+  for (const group of list) {
+    if (!group || typeof group !== "object") continue;
+    const hooks = (group as { hooks?: unknown[] }).hooks;
+    if (Array.isArray(hooks) && hooks.some(isAgentslipHandler)) return true;
+  }
+  return false;
 }
 
 function removeJson(file: string): void {
@@ -176,11 +321,6 @@ function removeJson(file: string): void {
     else delete hookMap[event];
   }
   existing.hooks = hookMap;
-  fs.copyFileSync(file, backupPath(file));
+  maybeBackup(file);
   fs.writeFileSync(file, `${JSON.stringify(existing, null, 2)}\n`);
-}
-
-function isAgentslipHandler(h: unknown): boolean {
-  const s = JSON.stringify(h);
-  return s.includes("agentslip") || /cli\.js hook/.test(s);
 }

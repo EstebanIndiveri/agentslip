@@ -57,7 +57,7 @@ export function buildDocument(
   } else if (data.kind === "needs-you") {
     lines.push(center("^^^`NEEDS YOU`", cpl));
     kv(lines, "agent", data.agent, cpl);
-    kv(lines, "event", data.event, cpl);
+    kv(lines, "event", eventLabel(data.event), cpl);
     if (data.request) {
       lines.push("-".repeat(Math.min(cpl, 32)));
       const req = oneLine(r(data.request), cpl);
@@ -84,6 +84,22 @@ export function buildDocument(
   }
 
   return { document: lines.join("\n"), sessionCode: code, cpl };
+}
+
+/** Short labels so 58 mm receiptline columns do not split mid-word. */
+export function eventLabel(event: string): string {
+  switch (event) {
+    case "PermissionRequest":
+      return "perm-req";
+    case "Notification":
+      return "notify";
+    case "SessionEnd":
+      return "session-end";
+    case "Stop":
+      return "stop";
+    default:
+      return event;
+  }
 }
 
 function kv(lines: string[], key: string, value: string | undefined, cpl: number): void {

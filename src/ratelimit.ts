@@ -11,6 +11,8 @@ export function loadState(): AppState {
     return {
       ticketSeq: Number(raw.ticketSeq) || 0,
       prints: Array.isArray(raw.prints) ? raw.prints : [],
+      lastDoneSession: typeof raw.lastDoneSession === "string" ? raw.lastDoneSession : undefined,
+      lastDoneAt: typeof raw.lastDoneAt === "number" ? raw.lastDoneAt : undefined,
     };
   } catch {
     return { ticketSeq: 0, prints: [] };
@@ -44,6 +46,19 @@ export function recordPrint(at: Date = now(), state: AppState = loadState()): Ap
   const next: AppState = {
     ticketSeq: state.ticketSeq + 1,
     prints: [...state.prints.filter((p) => p.t >= cutoff), { t: at.getTime() }],
+    lastDoneSession: state.lastDoneSession,
+    lastDoneAt: state.lastDoneAt,
+  };
+  saveState(next);
+  return next;
+}
+
+export function recordDone(sessionId: string | undefined, at: Date, state: AppState = loadState()): AppState {
+  if (!sessionId) return state;
+  const next: AppState = {
+    ...state,
+    lastDoneSession: sessionId,
+    lastDoneAt: at.getTime(),
   };
   saveState(next);
   return next;

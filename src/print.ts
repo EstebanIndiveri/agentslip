@@ -1,6 +1,6 @@
-import type { AgentslipConfig, SlipData } from "./types.js";
+import type { AgentslipConfig, AppState, SlipData } from "./types.js";
 import { loadConfig } from "./config.js";
-import { checkGate, loadState, recordPrint } from "./ratelimit.js";
+import { checkGate, loadState, recordDone, recordPrint } from "./ratelimit.js";
 import { renderSlip } from "./slips/document.js";
 import { writeVirtualSlip } from "./drivers/virtual.js";
 import { writeEscposFile } from "./drivers/file.js";
@@ -16,12 +16,34 @@ export type PrintResult = {
   ticketNo?: number;
 };
 
+/** Claude Code sends Notification idle_prompt ~60 s after Stop. Skip a repeat. */
+export const IDLE_PROMPT_DEDUPE_MS = 120_000;
+
+function isIdlePromptAfterStop(data: SlipData, at: Date, state: AppState): boolean {
+  if (data.kind !== "needs-you") return false;
+  if (data.event !== "Notification") return false;
+  const req = data.request ?? "";
+  if (!req.startsWith("idle_prompt")) return false;
+  if (!data.sessionId || !state.lastDoneSession || !state.lastDoneAt) return false;
+  if (data.sessionId !== state.lastDoneSession) return false;
+  return at.getTime() - state.lastDoneAt < IDLE_PROMPT_DEDUPE_MS;
+}
+
+function notePrint(data: SlipData, at: Date, state: AppState): void {
+  const next = recordPrint(at, state);
+  if (data.kind === "done") recordDone(data.sessionId, at, next);
+}
+
 export async function printSlip(
   data: SlipData,
   config: AgentslipConfig = loadConfig(),
 ): Promise<PrintResult> {
   const at = data.time ?? now();
   const state = loadState();
+  if (isIdlePromptAfterStop(data, at, state)) {
+    log("skipped (idle_prompt after Stop)");
+    return { printed: false, reason: "idle-prompt-dedupe" };
+  }
   const gate = checkGate(config, at, state);
   if (!gate.ok) {
     log(`skipped (${gate.reason})`);
@@ -32,7 +54,7 @@ export async function printSlip(
 
   if (config.driver === "file") {
     const file = writeEscposFile(rendered, config.file.path);
-    recordPrint(at, state);
+    notePrint(data, at, state);
     log(`wrote ${file}`);
     return { printed: true, file, ticketNo: rendered.ticketNo };
   }
@@ -48,13 +70,13 @@ export async function printSlip(
       log(`printer error: ${result.error}`);
       return { printed: false, reason: result.error, ticketNo: rendered.ticketNo };
     }
-    recordPrint(at, state);
+    notePrint(data, at, state);
     log(`sent ticket #${rendered.ticketNo} to ${config.escpos.host}:${config.escpos.port}`);
     return { printed: true, ticketNo: rendered.ticketNo };
   }
 
   const file = writeVirtualSlip(rendered, data, config.virtual.slipsDir ?? defaultSlipsDir());
-  recordPrint(at, state);
+  notePrint(data, at, state);
   log(`virtual slip ${file}`);
   return { printed: true, file, ticketNo: rendered.ticketNo };
 }
