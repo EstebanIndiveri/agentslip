@@ -11,12 +11,21 @@
  * token: string, JSX key=, {"key":"Enter"}, and TURKEY= tests must fail.
  * MUTATION CHECK: remove REDACT_MAX_CHARS truncation → length-cap test fails.
  * MUTATION CHECK: call takeValue before the name check → 100 KB ASSIGN perf fails.
- * MUTATION CHECK: drop bounded quantifiers → 100 KB URL / eyJ / dashes perf fails.
+ * MUTATION CHECK: drop bounded quantifiers → uncapped 100 KB regex tests fail.
+ * MUTATION CHECK: naive slice-then-redact (no scan pad / no token clip) →
+ * boundary-straddle tests fail.
+ * MUTATION CHECK: drop redactDeep budget → MultiEdit e2e exceeds 2 s.
+ * MUTATION CHECK: drop redactDeep depth guard → 10k-nest test throws.
+ * MUTATION CHECK: JSON_STRING `\\?` (single escape) → Bash double-escaped JSON fails.
  */
 export const REDACTION_ENABLED = true;
 
-/** Per-field cap. The slip is ~32 columns; scanning more is wasted and is a ReDoS footgun. */
+/** Per-field cap after redaction. Scan this many extra chars so a secret at the cut still matches. */
 export const REDACT_MAX_CHARS = 8192;
+export const REDACT_SCAN_PAD = 512;
+/** Total string chars redactDeep will feed to redact() before substituting "…". */
+export const REDACT_DEEP_MAX_CHARS = 12 * 1024;
+export const REDACT_DEEP_MAX_DEPTH = 32;
 
 const API_KEY_PATTERNS: RegExp[] = [
   /\bsk-[a-zA-Z0-9_-]{10,256}\b/g,
@@ -134,10 +143,9 @@ function valueLooksSecret(value: string): boolean {
 
 export function redact(text: string, enabled = true): string {
   if (!REDACTION_ENABLED || !enabled || text.length === 0) return text;
-  if (text.length > REDACT_MAX_CHARS) {
-    text = `${text.slice(0, REDACT_MAX_CHARS - 1)}…`;
-  }
-  let out = text;
+  const scanLimit = REDACT_MAX_CHARS + REDACT_SCAN_PAD;
+  const scan = text.length > scanLimit ? text.slice(0, scanLimit) : text;
+  let out = scan;
   out = out.replace(PEM_BLOCK, "[redacted]");
   for (const re of API_KEY_PATTERNS) {
     re.lastIndex = 0;
@@ -152,25 +160,119 @@ export function redact(text: string, enabled = true): string {
   out = out.replace(SLACK_WEBHOOK, "[redacted]");
   out = out.replace(MYSQL_DASH_P, (cmd) => cmd.replace(/\s-p(?!ort\b)\S{0,256}/g, " -p[redacted]"));
   out = redactEnvBlock(out);
+  out = clipField(out, REDACT_MAX_CHARS);
   return truncateLongLines(out);
+}
+
+/**
+ * Clip at the last whitespace before `max` so a split token (partial ghp_, open
+ * JSON, URL with no @) is dropped rather than printed.
+ * MUTATION CHECK: slice(0, max-1)+"…" instead → boundary-straddle tests fail.
+ */
+export function clipField(text: string, max = REDACT_MAX_CHARS): string {
+  if (text.length <= max) return text;
+  const window = text.slice(0, max);
+  let cut = -1;
+  for (let i = window.length - 1; i >= 0; i--) {
+    const c = window[i];
+    if (c === "\n" || c === "\r" || c === " " || c === "\t") {
+      cut = i;
+      break;
+    }
+  }
+  if (cut <= 0) return "…";
+  let end = cut;
+  while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
+  if (end <= 0) return "…";
+  return `${text.slice(0, end)}…`;
 }
 
 /**
  * Walk objects/arrays and redact string leaves. Used on hook tool_input
  * before JSON.stringify so Write content is not double-escaped past JSON_STRING.
  * MUTATION CHECK: skip this in toolDetail → Write escaped-JSON leak tests fail.
+ * MUTATION CHECK: drop the budget → MultiEdit / many-strings e2e exceeds 2 s.
+ * MUTATION CHECK: drop the depth guard → 10k-nest test throws RangeError.
  */
 export function redactDeep(value: unknown, enabled = true): unknown {
-  if (typeof value === "string") return redact(value, enabled);
-  if (Array.isArray(value)) return value.map((v) => redactDeep(v, enabled));
+  return walkDeep(value, enabled, 0, { used: 0 });
+}
+
+function walkDeep(
+  value: unknown,
+  enabled: boolean,
+  depth: number,
+  budget: { used: number },
+): unknown {
+  if (depth >= REDACT_DEEP_MAX_DEPTH) return "…";
+  if (budget.used >= REDACT_DEEP_MAX_CHARS) return "…";
+  if (typeof value === "string") {
+    budget.used += Math.min(value.length, REDACT_MAX_CHARS);
+    return redact(value, enabled);
+  }
+  if (Array.isArray(value)) {
+    const out: unknown[] = [];
+    for (let i = 0; i < value.length; i++) {
+      if (budget.used >= REDACT_DEEP_MAX_CHARS) {
+        out.push("…");
+        break;
+      }
+      out.push(walkDeep(value[i], enabled, depth + 1, budget));
+    }
+    return out;
+  }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = redactDeep(v, enabled);
+      if (budget.used >= REDACT_DEEP_MAX_CHARS) {
+        out[k] = "…";
+        break;
+      }
+      out[k] = walkDeep(v, enabled, depth + 1, budget);
     }
     return out;
   }
   return value;
+}
+
+/** Regex + 100 KB attack strings for uncapped complexity tests. */
+export function complexityCases(): { name: string; re: RegExp; input: string }[] {
+  const size = 100_000;
+  return [
+    {
+      name: "eyJ",
+      re: API_KEY_PATTERNS[API_KEY_PATTERNS.length - 1],
+      input: `eyJ${"a".repeat(size)}`,
+    },
+    {
+      name: "CRED_URL",
+      re: CRED_URL,
+      input: `https://${"a".repeat(size)}`,
+    },
+    {
+      name: "ASSIGN_HEAD word",
+      re: ASSIGN_HEAD,
+      input: "a".repeat(size),
+    },
+    {
+      name: "ASSIGN_HEAD dashes",
+      re: ASSIGN_HEAD,
+      input: "-".repeat(size),
+    },
+    {
+      name: "SLACK",
+      re: SLACK_WEBHOOK,
+      input: (() => {
+        const u = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX";
+        return u.repeat(Math.ceil(size / u.length));
+      })(),
+    },
+    {
+      name: "MYSQL",
+      re: MYSQL_DASH_P,
+      input: "mysql -px ".repeat(Math.ceil(size / 10)),
+    },
+  ];
 }
 
 function redactJsonLike(text: string): string {

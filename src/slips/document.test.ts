@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ESC_INIT,
+  NEEDS_YOU_MAX_LINES,
   buildDocument,
   columnsFor,
   hasCutSequence,
@@ -61,6 +62,18 @@ describe("document", () => {
     };
     const doc = buildDocument(long, { widthMm: 58, ticketNo: 1 }).document;
     expect(doc.split("\n").some((l) => l.length > 80)).toBe(false);
+  });
+
+  it("caps NEEDS YOU request at 8 wrapped lines plus a leftover count", () => {
+    const long: SlipData = {
+      ...needs,
+      request: "Bash:\n" + "word\n".repeat(400),
+    };
+    const doc = buildDocument(long, { widthMm: 58, ticketNo: 1 }).document;
+    const m = doc.match(/… \(\+(\d+) lines\)/);
+    expect(m).not.toBeNull();
+    expect(Number(m?.[1])).toBeGreaterThan(8);
+    expect(NEEDS_YOU_MAX_LINES).toBe(8);
   });
 
   it("omits summary when missing", () => {

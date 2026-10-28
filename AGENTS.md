@@ -38,10 +38,15 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   10. Make `ASSIGN_HEAD` consume the value for non-secret names (old `([^\s,;]+)` match, return full match) → `Bash: DB_PASS=` / `I ran: APIKEY=` hook tests fail.
   11. Drop `GENERIC_KEY_NAMES` / glued-prefix checks so `primaryKey`, `token: string;`, JSX `key=`, `{"key":"Enter"}`, and `TURKEY=` are treated as secrets → false-positive tests fail.
   12. Remove the `NODE_ENV === "test"` guard around `AGENTSLIP_HOOK_HANG_MS` → the hang-ignored e2e fails.
-  13. Remove `REDACT_MAX_CHARS` truncation in `src/redact.ts` → the length-cap test fails.
+  13. Remove `REDACT_MAX_CHARS` truncation / `clipField` in `src/redact.ts` → the length-cap test fails.
   14. Call `takeValue` before the name check in `redactAssignments` → 100 KB ASSIGN / URL perf tests fail.
-  15. Unbound the `{0,256}` / `{1,256}` quantifiers in CRED_URL, eyJ, and ASSIGN_HEAD → 100 KB perf tests fail.
+  15. Unbound the `{0,256}` / `{1,256}` quantifiers in CRED_URL, eyJ, and ASSIGN_HEAD → uncapped 100 KB regex tests fail.
   16. Skip `redactDeep` in `toolDetail` → Write escaped-JSON leak tests fail.
+  17. Naive slice-then-redact (no scan pad, no token clip) → boundary-straddle tests fail.
+  18. Drop the `redactDeep` character budget → MultiEdit e2e exceeds 2 s.
+  19. Drop the `redactDeep` depth guard → 10k-nest test throws.
+  20. JSON_STRING `\\?` (single escape) → Bash double-escaped JSON test fails.
+  21. Drop the NEEDS YOU line cap in `src/slips/document.ts` → 8-line leftover test fails.
 
 ## Adding an agent
 

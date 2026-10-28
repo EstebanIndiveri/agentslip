@@ -7,8 +7,16 @@ import { defaultConfig } from "./config.js";
 import { printSlip } from "./print.js";
 import { parseHook } from "./hooks/parse.js";
 import { toolDetail } from "./hooks/shared.js";
-import { redact, REDACT_MAX_CHARS, REDACTION_ENABLED } from "./redact.js";
-import { buildDocument, renderSlip } from "./slips/document.js";
+import {
+  redact,
+  redactDeep,
+  REDACT_DEEP_MAX_CHARS,
+  REDACT_DEEP_MAX_DEPTH,
+  REDACT_MAX_CHARS,
+  REDACT_SCAN_PAD,
+  REDACTION_ENABLED,
+} from "./redact.js";
+import { buildDocument, NEEDS_YOU_MAX_LINES, renderSlip } from "./slips/document.js";
 import type { SlipData } from "./types.js";
 
 const SECRET_TEXT =
@@ -720,17 +728,18 @@ describe("valueLooksSecret and extra glued / flag names", () => {
 });
 
 describe("REDACT_MAX_CHARS", () => {
-  it("caps input to 4–8 KB before scanning", () => {
+  it("caps input to 4–8 KB after scanning a pad", () => {
     expect(REDACT_MAX_CHARS).toBeGreaterThanOrEqual(4 * 1024);
     expect(REDACT_MAX_CHARS).toBeLessThanOrEqual(8 * 1024);
+    expect(REDACT_SCAN_PAD).toBeGreaterThanOrEqual(256);
     const src = fs.readFileSync(path.join(process.cwd(), "src/redact.ts"), "utf8");
-    expect(src).toMatch(/text\.length > REDACT_MAX_CHARS/);
-    // Short lines so LONG_LINE truncation cannot hide a missing cap.
+    expect(src).toMatch(/REDACT_MAX_CHARS \+ REDACT_SCAN_PAD/);
+    expect(src).toMatch(/clipField/);
     const huge = "a\n".repeat(50_000);
     expect(huge.length).toBeGreaterThan(REDACT_MAX_CHARS * 2);
     const out = redact(huge);
     expect(out.length).toBeLessThanOrEqual(REDACT_MAX_CHARS);
-    expect(out.length).toBeGreaterThan(REDACT_MAX_CHARS - 2);
+    expect(out.length).toBeLessThan(huge.length);
   });
 });
 
@@ -802,4 +811,152 @@ describe("Write tool_input escaped JSON (Claude Code and Codex)", () => {
       expect(srf.document).toMatch(/\[redacted\]/);
     });
   }
+});
+
+function padTo(n: number): string {
+  if (n <= 1) return "\n";
+  return `${"n\n".repeat(Math.ceil(n / 2) + 2).slice(0, n - 1)}\n`;
+}
+
+function straddle(secret: string, needle: string): string {
+  const overlap = secret.indexOf(needle) + needle.length + 4;
+  const start = Math.max(0, REDACT_MAX_CHARS - overlap);
+  return `${padTo(start)}${secret}\nzz\n`;
+}
+
+describe("boundary: secrets straddling the 8 KB cut", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfacesFromSlip(
+    slip: SlipData,
+  ): Promise<{ document: string; bin: string; tcp: string }> {
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-bound-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: `${slip.sessionId || "s"}-tcp` }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  const cases: { name: string; secret: string; needle: string }[] = [
+    {
+      name: "ghp_",
+      needle: "BdGhpL99",
+      secret: `${"ghp"}_${"BdGhpL99"}${"x".repeat(16)}`,
+    },
+    {
+      name: "JSON apiKey",
+      needle: "BdJsonL99",
+      secret: `{${'"'}${"apiKey"}${'"'}:${'"'}${"BdJsonL99"}${'"'}}`,
+    },
+    {
+      name: "postgres URL",
+      needle: "BdPgL99xx",
+      secret: `${"postgres"}://${"admin"}:${"BdPgL99xx"}@${"h.test"}/db`,
+    },
+    {
+      name: "key=",
+      needle: "BdKeyL99xx",
+      secret: `key=${"BdKeyL99xx"}${"y".repeat(16)}`,
+    },
+    {
+      name: "Bearer",
+      needle: "BdBearL99",
+      secret: `Bearer ${"BdBearL99"}${"z".repeat(12)}`,
+    },
+    {
+      name: "eyJ",
+      needle: "BdEyjL99",
+      secret: `${"eyJ"}${"BdEyjL99"}.${"b".repeat(8)}.${"c".repeat(8)}`,
+    },
+    {
+      name: "Slack webhook",
+      needle: "BdSlack99",
+      secret: `${"https"}://${"hooks"}.slack.com/services/${"T00"}/${"B00"}/${"BdSlack99"}${"w".repeat(16)}`,
+    },
+  ];
+
+  for (const c of cases) {
+    it(`redact() hides straddling ${c.name}`, () => {
+      const text = straddle(c.secret, c.needle);
+      expect(text.slice(0, REDACT_MAX_CHARS - 1)).toContain(c.needle);
+      const out = redact(text);
+      expect(out).not.toContain(c.needle);
+    });
+
+    it(`hook slip hides straddling ${c.name} in document, .bin, and TCP`, async () => {
+      const command = straddle(c.secret, c.needle);
+      const p = JSON.parse(
+        fs.readFileSync(path.join(process.cwd(), "fixtures/claude-code/permission-request.json"), "utf8"),
+      ) as Record<string, unknown>;
+      p.tool_name = "Bash";
+      p.tool_input = { command, description: "run" };
+      const data = await parseHook(p, frozen);
+      expect(data).not.toBeNull();
+      expect(data?.request).not.toContain(c.needle);
+      const srf = await surfacesFromSlip(data as SlipData);
+      expect(srf.document).not.toContain(c.needle);
+      expect(srf.bin).not.toContain(c.needle);
+      expect(srf.tcp).not.toContain(c.needle);
+    });
+  }
+});
+
+describe("double-escaped JSON in a Bash command", () => {
+  it("redacts apiKey after a second stringify", () => {
+    const needle = "EscJsonBashLeak99";
+    const q = `${"\\".repeat(3)}"`;
+    const text = `Bash: echo '${"{"}${q}${"apiKey"}${q}:${q}${needle}${q}${"}"}'`;
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+  });
+});
+
+describe("redactDeep budget and depth", () => {
+  it("stops after REDACT_DEEP_MAX_CHARS and substitutes …", () => {
+    expect(REDACT_DEEP_MAX_CHARS).toBeGreaterThanOrEqual(8 * 1024);
+    expect(REDACT_DEEP_MAX_CHARS).toBeLessThanOrEqual(16 * 1024);
+    const edits = Array.from({ length: 300 }, () => ({
+      old_string: "a",
+      new_string: "x".repeat(8 * 1024),
+    }));
+    const t0 = performance.now();
+    const out = redactDeep({ file_path: "x.ts", edits }) as { edits: unknown[] };
+    const ms = performance.now() - t0;
+    expect(ms).toBeLessThan(500);
+    expect(JSON.stringify(out)).toContain("…");
+    expect(out.edits.length).toBeLessThan(300);
+  });
+
+  it("10k nesting returns a value instead of throwing", () => {
+    expect(REDACT_DEEP_MAX_DEPTH).toBeGreaterThanOrEqual(8);
+    let o: unknown = "leaf";
+    for (let i = 0; i < 10_000; i++) o = { n: o };
+    let result: unknown;
+    expect(() => {
+      result = redactDeep(o);
+    }).not.toThrow();
+    expect(JSON.stringify(result)).toContain("…");
+  });
 });

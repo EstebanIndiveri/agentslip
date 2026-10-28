@@ -3,10 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { redact, REDACT_MAX_CHARS } from "./redact.js";
+import { complexityCases, redact, REDACT_MAX_CHARS } from "./redact.js";
 
 const SIZE = 100_000;
 const LIMIT_MS = 50;
+const UNCAP_MS = 50;
 
 function timed(label: string, input: string): number {
   const t0 = performance.now();
@@ -58,14 +59,6 @@ describe("redact ReDoS guards (100 KB)", () => {
     });
   }
 
-  it("CRED_URL, eyJ, and ASSIGN_HEAD use bounded quantifiers", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/redact.ts"), "utf8");
-    expect(src).toMatch(/\[\^\/\\s@\]\{0,256\}/);
-    expect(src).toMatch(/\[\^@\/\\s\]\{1,256\}/);
-    expect(src).toMatch(/eyJ\[a-zA-Z0-9_-\]\{1,256\}/);
-    expect(src).toMatch(/ASSIGN_HEAD = \/\\b\(\[A-Za-z_\]\[A-Za-z0-9_-\]\{0,255\}\)/);
-  });
-
   it("redactAssignments checks the name before takeValue", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/redact.ts"), "utf8");
     const fn = src.slice(src.indexOf("function redactAssignments"), src.indexOf("function takeValue"));
@@ -76,18 +69,73 @@ describe("redact ReDoS guards (100 KB)", () => {
   });
 });
 
-describe("hook e2e 100 KB adversarial payload", () => {
+describe("uncapped regex complexity (100 KB, no field cap)", () => {
+  for (const c of complexityCases()) {
+    it(`${c.name} finishes in under ${UNCAP_MS} ms`, () => {
+      expect(c.input.length).toBeGreaterThanOrEqual(SIZE);
+      const re = c.re;
+      re.lastIndex = 0;
+      const t0 = performance.now();
+      c.input.replace(re, "[redacted]");
+      const ms = performance.now() - t0;
+      // eslint-disable-next-line no-console
+      console.log(`uncapped ${c.name}: ${ms.toFixed(2)} ms (in=${c.input.length})`);
+      expect(ms).toBeLessThan(UNCAP_MS);
+    });
+  }
+
+  it("eyJ uses {1,256} so the unbounded mutation cannot hide", () => {
+    const c = complexityCases().find((x) => x.name === "eyJ");
+    expect(c).toBeTruthy();
+    expect(c?.re.source).toMatch(/\[a-zA-Z0-9_-\]\{1,256\}/);
+  });
+});
+
+function runHook(
+  payload: string,
+  home: string,
+): Promise<{ code: number | null; ms: number; stdout: string; stderr: string }> {
+  const dist = path.join(process.cwd(), "dist", "cli.js");
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [dist, "hook"], {
+      env: {
+        ...process.env,
+        AGENTSLIP_HOME: home,
+        AGENTSLIP_GIT_REPO: "demo-app",
+        AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
+        TZ: "UTC",
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      stdout += String(d);
+    });
+    child.stderr.on("data", (d) => {
+      stderr += String(d);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ code, ms: Date.now() - started, stdout, stderr });
+    });
+    child.stdin.write(payload);
+    child.stdin.end();
+  });
+}
+
+describe("hook e2e budgets", () => {
   const homes: string[] = [];
   afterEach(() => {
     for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
   });
 
-  it("compiled hook finishes in under 2 s", async () => {
+  it("8 KB Write payload finishes in under 2 s", async () => {
     const dist = path.join(process.cwd(), "dist", "cli.js");
     expect(fs.existsSync(dist)).toBe(true);
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-perf-"));
     homes.push(home);
-    const payload = {
+    const payload = JSON.stringify({
       session_id: "perf",
       cwd: process.cwd(),
       hook_event_name: "PermissionRequest",
@@ -96,35 +144,76 @@ describe("hook e2e 100 KB adversarial payload", () => {
         file_path: "x.ts",
         content: `https://u:p@h/${"a".repeat(40_000)} eyJ${"b".repeat(20_000)} mysql -px `.repeat(2),
       },
-    };
-    const started = Date.now();
-    const result = await new Promise<{ code: number | null; ms: number; stdout: string }>(
-      (resolve, reject) => {
-        const child = spawn(process.execPath, [dist, "hook"], {
-          env: {
-            ...process.env,
-            AGENTSLIP_HOME: home,
-            AGENTSLIP_GIT_REPO: "demo-app",
-            AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
-            TZ: "UTC",
-          },
-        });
-        let stdout = "";
-        child.stdout.on("data", (d) => {
-          stdout += String(d);
-        });
-        child.on("error", reject);
-        child.on("close", (code) => {
-          resolve({ code, ms: Date.now() - started, stdout });
-        });
-        child.stdin.write(JSON.stringify(payload));
-        child.stdin.end();
-      },
-    );
+    });
+    const result = await runHook(payload, home);
     // eslint-disable-next-line no-console
-    console.log(`hook e2e 100KB: ${result.ms} ms`);
+    console.log(`hook e2e 100KB Write: ${result.ms} ms`);
     expect(result.code).toBe(0);
     expect(result.ms).toBeLessThan(2000);
     expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).not.toMatch(/hard timeout/);
+  }, 8000);
+
+  it("MultiEdit 300 × 8 KB finishes in under 2 s", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-perf-"));
+    homes.push(home);
+    const payload = JSON.stringify({
+      session_id: "perf-me",
+      cwd: process.cwd(),
+      hook_event_name: "PermissionRequest",
+      tool_name: "MultiEdit",
+      tool_input: {
+        file_path: "x.ts",
+        edits: Array.from({ length: 300 }, () => ({
+          old_string: "a",
+          new_string: "x".repeat(8 * 1024),
+        })),
+      },
+    });
+    const result = await runHook(payload, home);
+    // eslint-disable-next-line no-console
+    console.log(`hook e2e MultiEdit 300x8KB: ${result.ms} ms`);
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).not.toMatch(/hard timeout/);
+  }, 8000);
+
+  it("Codex 1000 strings finishes in under 2 s", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-perf-"));
+    homes.push(home);
+    const strings: Record<string, string> = {};
+    for (let i = 0; i < 1000; i++) strings[`s${i}`] = "y".repeat(8 * 1024);
+    const payload = JSON.stringify({
+      session_id: "perf-cx",
+      cwd: process.cwd(),
+      hook_event_name: "PermissionRequest",
+      tool_name: "ApplyPatch",
+      tool_input: strings,
+    });
+    const result = await runHook(payload, home);
+    // eslint-disable-next-line no-console
+    console.log(`hook e2e Codex 1000 strings: ${result.ms} ms`);
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).not.toMatch(/hard timeout/);
+  }, 8000);
+
+  it("10k nested tool_input produces a slip (no RangeError)", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-perf-"));
+    homes.push(home);
+    let inner = '{"x":"v"}';
+    for (let i = 0; i < 10_000; i++) inner = `{"n":${inner}}`;
+    const payload =
+      `{"session_id":"nest","cwd":${JSON.stringify(process.cwd())},` +
+      `"hook_event_name":"PermissionRequest","tool_name":"Write","tool_input":${inner}}`;
+    const result = await runHook(payload, home);
+    // eslint-disable-next-line no-console
+    console.log(`hook e2e 10k nest: ${result.ms} ms`);
+    expect(result.code).toBe(0);
+    expect(result.ms).toBeLessThan(2000);
+    expect(result.stdout.trim()).toBe("{}");
+    expect(result.stderr).not.toMatch(/hard timeout/);
   }, 8000);
 });

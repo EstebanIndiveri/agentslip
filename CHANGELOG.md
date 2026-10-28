@@ -3,8 +3,10 @@
 ## 0.1.1 — 2026-10-28
 
 - Assignment redaction does not consume the value when the name is not a secret, so `Bash: DB_PASS=`, `I ran: APIKEY=`, and `aws_secret_access_key =` are redacted. The name is checked before scanning the value so `a:a:a:…` is not O(n²).
-- Each field is truncated to 8192 characters before redaction. Regex quantifiers in `redact.ts` are bounded. 100 KB adversarial inputs finish in well under 50 ms.
-- Write `tool_input` string values are redacted before `JSON.stringify`, and JSON key matching accepts backslashes before quotes, so `{\"apiKey\":\"…\"}` does not leak after a second stringify.
+- Each field is scanned 512 characters past the 8 KB cap, then clipped at the last whitespace so a split `ghp_`, JSON value, or credential URL cannot print. Regex quantifiers stay bounded even without the cap (100 KB attacks finish in a few milliseconds).
+- `redactDeep` on hook `tool_input` has a 12 KB total character budget and a depth limit of 32, so a 300-edit MultiEdit or 10k-nested object still prints a slip in under 2 s.
+- NEEDS YOU request bodies are capped at 8 wrapped lines plus `… (+N lines)`.
+- Write `tool_input` string values are redacted before `JSON.stringify`, and JSON key matching accepts backslashes before quotes, so `{\"apiKey\":\"…\"}` (including double-escaped JSON inside a Bash command) does not leak after a second stringify.
 - Redaction matches camelCase JSON keys (`apiKey`, `accessToken`, `clientSecret`, `stripeKey`, `masterKey`), glued names (`APIKEY`, `apikey`, `GITHUBTOKEN`, `DBPASSWORD`, `MYAPP_APIKEY`, `DBPASS`, `ADMINPASSWORD`, `SLACKTOKEN`), query strings (`?apikey=`, `&githubtoken=`), `MYSQL_PWD=`, escaped JSON, Python dicts, numeric JSON, quoted values with spaces, `--token=` / `--api-key`, and `--password=`.
 - Bare `key` / `token` with a short identifier stay visible; a long unprefixed value under `key=` / `token=` is redacted.
 - `mysql -p` redaction also covers `mysqldump`, `mysqladmin`, and `mysqlimport`, and does not eat `-port` on a later command.

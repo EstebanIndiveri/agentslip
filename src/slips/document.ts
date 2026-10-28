@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import type { AgentslipConfig, RenderedSlip, SlipData } from "../types.js";
 import { formatLocal } from "../clock.js";
 import { redact } from "../redact.js";
-import { wrapLine, oneLine } from "../wrap.js";
+import { wrapLine } from "../wrap.js";
 import { escapeRl } from "./escape.js";
 
 const require = createRequire(import.meta.url);
@@ -13,6 +13,8 @@ const receiptline = require("receiptline") as {
 
 /** MUTATION CHECK: set false so ESC/POS snapshots fail (no GS V). */
 export const ESPOS_CUT = true;
+/** MUTATION CHECK: drop this cap → NEEDS YOU 8-line test fails. */
+export const NEEDS_YOU_MAX_LINES = 8;
 
 export function columnsFor(widthMm: 58 | 80): number {
   return widthMm === 80 ? 48 : 32;
@@ -60,10 +62,14 @@ export function buildDocument(
     kv(lines, "event", eventLabel(data.event), cpl);
     if (data.request) {
       lines.push("-".repeat(Math.min(cpl, 32)));
-      const req = oneLine(r(data.request), cpl);
-      lines.push(`\`${escapeRl(req)}\``);
-      const rest = wrapLine(r(data.request), cpl).slice(1);
-      for (const w of rest) lines.push(escapeRl(w));
+      const wrapped = wrapLine(r(data.request), cpl);
+      const hidden = Math.max(0, wrapped.length - NEEDS_YOU_MAX_LINES);
+      const shown = wrapped.slice(0, NEEDS_YOU_MAX_LINES);
+      if (shown[0] !== undefined) {
+        lines.push(`\`${escapeRl(shown[0])}\``);
+        for (const w of shown.slice(1)) lines.push(escapeRl(w));
+      }
+      if (hidden > 0) lines.push(escapeRl(`… (+${hidden} lines)`));
     }
   } else {
     lines.push(center("^^^SESSION", cpl));
