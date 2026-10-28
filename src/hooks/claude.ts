@@ -8,7 +8,7 @@ import { now } from "../clock.js";
 import { gitInfo } from "../gitinfo.js";
 import { readTranscript } from "../transcript.js";
 import { asRecord } from "./detect.js";
-import { applyTranscript, summarize } from "./shared.js";
+import { applyTranscript, summarize, toolDetail } from "./shared.js";
 
 const EVENTS = new Set(["Stop", "Notification", "PermissionRequest", "SessionEnd"]);
 
@@ -68,16 +68,4 @@ export async function parseClaude(payload: unknown, at: Date = now()): Promise<S
   if (!base.tokens) base.tokens = "n/a";
   if (!base.cost) base.cost = "n/a";
   return base;
-}
-
-function toolDetail(input: unknown): string | undefined {
-  if (!input || typeof input !== "object") return undefined;
-  const o = input as Record<string, unknown>;
-  if (typeof o.command === "string") return o.command;
-  if (typeof o.description === "string") return o.description;
-  try {
-    return JSON.stringify(o);
-  } catch {
-    return undefined;
-  }
 }

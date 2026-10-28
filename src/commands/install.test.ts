@@ -9,6 +9,7 @@ describe("install", () => {
   const prev = {
     claude: process.env.AGENTSLIP_CLAUDE_SETTINGS,
     home: process.env.AGENTSLIP_HOME,
+    osHome: process.env.HOME,
     exit: process.exitCode,
   };
 
@@ -22,6 +23,8 @@ describe("install", () => {
     else process.env.AGENTSLIP_CLAUDE_SETTINGS = prev.claude;
     if (prev.home === undefined) delete process.env.AGENTSLIP_HOME;
     else process.env.AGENTSLIP_HOME = prev.home;
+    if (prev.osHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prev.osHome;
     process.exitCode = prev.exit;
   });
 
@@ -32,6 +35,7 @@ describe("install", () => {
     const file = path.join(dir, "settings.json");
     process.env.AGENTSLIP_CLAUDE_SETTINGS = file;
     process.env.AGENTSLIP_HOME = home;
+    process.env.HOME = home;
     return { dir, file, home };
   }
 

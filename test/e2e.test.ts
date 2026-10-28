@@ -219,6 +219,17 @@ describe("compiled binary e2e", () => {
     expect(text).not.toMatch(/TAIL_OK/);
   });
 
+  it("prints package.json version for --version", () => {
+    const dist = path.join(process.cwd(), "dist", "cli.js");
+    expect(fs.existsSync(dist)).toBe(true);
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as {
+      version: string;
+    };
+    const result = spawnSync(process.execPath, [dist, "--version"], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(pkg.version);
+  });
+
   it("compiled install --claude dry-run quotes an absolute node dist/cli.js hook command", () => {
     const dist = path.join(process.cwd(), "dist", "cli.js");
     expect(fs.existsSync(dist)).toBe(true);

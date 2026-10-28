@@ -8,7 +8,7 @@ import { now } from "../clock.js";
 import { gitInfo } from "../gitinfo.js";
 import { readTranscript } from "../transcript.js";
 import { asRecord } from "./detect.js";
-import { applyTranscript, summarize } from "./shared.js";
+import { applyTranscript, summarize, toolDetail } from "./shared.js";
 
 const EVENTS = new Set(["Stop", "PermissionRequest", "SessionEnd"]);
 
@@ -46,20 +46,7 @@ export async function parseCodex(payload: unknown, at: Date = now()): Promise<Sl
   if (event === "PermissionRequest") {
     base.kind = "needs-you";
     const tool = typeof p.tool_name === "string" ? p.tool_name : "tool";
-    const input = p.tool_input;
-    let detail: string | undefined;
-    if (input && typeof input === "object") {
-      const o = input as Record<string, unknown>;
-      if (typeof o.command === "string") detail = o.command;
-      else if (typeof o.description === "string") detail = o.description;
-      else {
-        try {
-          detail = JSON.stringify(o);
-        } catch {
-          detail = undefined;
-        }
-      }
-    }
+    const detail = toolDetail(p.tool_input);
     base.request = detail ? `${tool}: ${detail}` : tool;
     return base;
   }

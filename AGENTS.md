@@ -38,6 +38,10 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   10. Make `ASSIGN_HEAD` consume the value for non-secret names (old `([^\s,;]+)` match, return full match) → `Bash: DB_PASS=` / `I ran: APIKEY=` hook tests fail.
   11. Drop `GENERIC_KEY_NAMES` / glued-prefix checks so `primaryKey`, `token: string;`, JSX `key=`, `{"key":"Enter"}`, and `TURKEY=` are treated as secrets → false-positive tests fail.
   12. Remove the `NODE_ENV === "test"` guard around `AGENTSLIP_HOOK_HANG_MS` → the hang-ignored e2e fails.
+  13. Remove `REDACT_MAX_CHARS` truncation in `src/redact.ts` → the length-cap test fails.
+  14. Call `takeValue` before the name check in `redactAssignments` → 100 KB ASSIGN / URL perf tests fail.
+  15. Unbound the `{0,256}` / `{1,256}` quantifiers in CRED_URL, eyJ, and ASSIGN_HEAD → 100 KB perf tests fail.
+  16. Skip `redactDeep` in `toolDetail` → Write escaped-JSON leak tests fail.
 
 ## Adding an agent
 

@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defaultConfig } from "./config.js";
 import { printSlip } from "./print.js";
 import { parseHook } from "./hooks/parse.js";
-import { redact, REDACTION_ENABLED } from "./redact.js";
+import { toolDetail } from "./hooks/shared.js";
+import { redact, REDACT_MAX_CHARS, REDACTION_ENABLED } from "./redact.js";
 import { buildDocument, renderSlip } from "./slips/document.js";
 import type { SlipData } from "./types.js";
 
@@ -673,5 +674,119 @@ describe("ASSIGN does not swallow later secrets on hook slips", () => {
         expect(srf.document).toMatch(/\[redacted\]/);
       });
     }
+  }
+});
+
+describe("valueLooksSecret and extra glued / flag names", () => {
+  it("redacts a long unprefixed secret under key=", () => {
+    const secret = "keepNotThisLongSecretValue99";
+    expect(secret.length).toBeGreaterThanOrEqual(24);
+    const out = redact(`key=${secret}`);
+    expect(out).not.toContain(secret);
+    expect(out).toContain("key=[redacted]");
+  });
+
+  it("redacts a long unprefixed secret under token=", () => {
+    const secret = "keepNotThisLongSecretValue99";
+    const out = redact(`token=${secret}`);
+    expect(out).not.toContain(secret);
+    expect(out).toContain("token=[redacted]");
+  });
+
+  const extra: { name: string; text: string; needle: string }[] = [
+    { name: "ADMINPASSWORD=", text: "ADMINPASSWORD=leakAdminPw99", needle: "leakAdminPw99" },
+    { name: "SLACKTOKEN=", text: "SLACKTOKEN=leakSlackTok99", needle: "leakSlackTok99" },
+    { name: "stripeKey=", text: "stripeKey=leakStripeKey99", needle: "leakStripeKey99" },
+    { name: "masterKey=", text: "masterKey=leakMasterKey99", needle: "leakMasterKey99" },
+    { name: "--token=", text: "curl --token=leakFlagTok99 https://ex.test", needle: "leakFlagTok99" },
+    { name: "--api-key space", text: "curl --api-key leakFlagApi99 https://ex.test", needle: "leakFlagApi99" },
+  ];
+
+  for (const c of extra) {
+    it(`redacts ${c.name}`, () => {
+      const out = redact(c.text);
+      expect(out).not.toContain(c.needle);
+      expect(out).toMatch(/\[redacted\]/);
+    });
+  }
+});
+
+describe("REDACT_MAX_CHARS", () => {
+  it("caps input to 4–8 KB before scanning", () => {
+    expect(REDACT_MAX_CHARS).toBeGreaterThanOrEqual(4 * 1024);
+    expect(REDACT_MAX_CHARS).toBeLessThanOrEqual(8 * 1024);
+    const huge = `https://u:p@x/${"a".repeat(100_000)}`;
+    const out = redact(huge);
+    expect(out.length).toBeLessThanOrEqual(REDACT_MAX_CHARS);
+  });
+});
+
+describe("Write tool_input escaped JSON (Claude Code and Codex)", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfacesFromSlip(
+    slip: SlipData,
+  ): Promise<{ document: string; bin: string; tcp: string }> {
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-write-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: `${slip.sessionId || "s"}-tcp` }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  const needle = "EscJson13leak99";
+  const escapedContent = String.raw`{\"apiKey\":\"EscJson13leak99\"}`;
+
+  it("toolDetail redacts escaped JSON before stringify", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/hooks/shared.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export function toolDetail"), src.indexOf("export function applyTranscript"));
+    expect(fn.indexOf("redactDeep")).toBeGreaterThan(-1);
+    expect(fn.indexOf("JSON.stringify")).toBeGreaterThan(fn.indexOf("redactDeep"));
+    const out = toolDetail({ file_path: "src/config.ts", content: escapedContent });
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+  });
+
+  for (const agent of [
+    { name: "Claude Code", fixture: "fixtures/claude-code/permission-request.json" },
+    { name: "Codex", fixture: "fixtures/codex/permission-request.json" },
+  ]) {
+    it(`${agent.name} Write redacts double-escaped apiKey in document, .bin, and TCP`, async () => {
+      const p = JSON.parse(fs.readFileSync(path.join(process.cwd(), agent.fixture), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      p.tool_name = "Write";
+      p.tool_input = { file_path: "src/config.ts", content: escapedContent };
+      const data = await parseHook(p, frozen);
+      expect(data).not.toBeNull();
+      expect(data?.request).not.toContain(needle);
+      const srf = await surfacesFromSlip(data as SlipData);
+      expect(srf.document).not.toContain(needle);
+      expect(srf.bin).not.toContain(needle);
+      expect(srf.tcp).not.toContain(needle);
+      expect(srf.document).toMatch(/\[redacted\]/);
+    });
   }
 });
