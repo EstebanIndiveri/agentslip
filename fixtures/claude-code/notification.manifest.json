@@ -1,0 +1,17 @@
+{
+  "agent": "Claude Code",
+  "event": "Notification",
+  "source": "https://code.claude.com/docs/en/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": [
+    "session_id",
+    "transcript_path",
+    "cwd",
+    "hook_event_name",
+    "message",
+    "title",
+    "notification_type"
+  ],
+  "assumed_fields": [],
+  "notes": "Copied from the Notification input example. notification_type values such as permission_prompt are documented."
+}

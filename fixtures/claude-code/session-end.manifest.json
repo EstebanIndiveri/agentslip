@@ -1,0 +1,9 @@
+{
+  "agent": "Claude Code",
+  "event": "SessionEnd",
+  "source": "https://code.claude.com/docs/en/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": ["session_id", "transcript_path", "cwd", "hook_event_name", "reason"],
+  "assumed_fields": [],
+  "notes": "Copied from the SessionEnd input example. Documented reason values: clear, resume, logout, prompt_input_exit, other."
+}

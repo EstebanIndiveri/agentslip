@@ -1,0 +1,20 @@
+{
+  "agent": "Claude Code",
+  "event": "Stop",
+  "source": "https://code.claude.com/docs/en/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": [
+    "session_id",
+    "prompt_id",
+    "transcript_path",
+    "cwd",
+    "permission_mode",
+    "hook_event_name",
+    "stop_hook_active",
+    "last_assistant_message",
+    "background_tasks",
+    "session_crons"
+  ],
+  "assumed_fields": [],
+  "notes": "Example follows the Stop input sample in the official docs. background_tasks and session_crons are empty arrays (docs say they are present when the task registry is reachable). Transcript file format is not documented; parsers treat it as best effort."
+}

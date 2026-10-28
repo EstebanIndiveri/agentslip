@@ -1,0 +1,9 @@
+{
+  "agent": "Claude Code",
+  "event": "Stop",
+  "source": "https://code.claude.com/docs/en/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": ["hook_event_name", "session_id", "transcript_path"],
+  "assumed_fields": [],
+  "notes": "Sparse payload for missing-field tests. transcript_path points at a missing file on purpose. last_assistant_message omitted so the summary line is skipped."
+}

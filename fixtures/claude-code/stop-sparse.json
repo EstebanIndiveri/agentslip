@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "sparse-claude",
+  "transcript_path": "/Users/demo/.claude/projects/demo/missing.jsonl"
+}

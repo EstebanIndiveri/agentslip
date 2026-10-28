@@ -1,0 +1,20 @@
+{
+  "agent": "Claude Code",
+  "event": "PermissionRequest",
+  "source": "https://code.claude.com/docs/en/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": [
+    "session_id",
+    "transcript_path",
+    "cwd",
+    "permission_mode",
+    "hook_event_name",
+    "tool_name",
+    "tool_input",
+    "tool_input.command",
+    "tool_input.description",
+    "permission_suggestions"
+  ],
+  "assumed_fields": [],
+  "notes": "Copied from the PermissionRequest input example. Docs state there is no tool_use_id on this event (unlike PreToolUse)."
+}

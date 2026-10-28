@@ -1,0 +1,16 @@
+node_modules/
+dist/
+viewer/dist/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+*.log
+.DS_Store
+.agentslip/
+coverage/
+.vite/
+.env
+.env.*
+!.env.example
+test/viewer/.home/

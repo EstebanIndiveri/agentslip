@@ -1,0 +1,42 @@
+{
+  "name": "agentslip",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Receipts for your coding agents: a paper slip when it's done, when it needs you, and what the session cost.",
+  "type": "module",
+  "bin": {
+    "agentslip": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && vite build --config viewer/vite.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p viewer/tsconfig.json",
+    "test": "npm run build && vitest run && playwright test",
+    "test:unit": "vitest run",
+    "test:viewer": "playwright test",
+    "viewer": "vite --config viewer/vite.config.ts",
+    "demo": "node dist/cli.js test",
+    "record-demo": "node scripts/record-demo.mjs"
+  },
+  "keywords": [
+    "receipt",
+    "escpos",
+    "hooks",
+    "claude-code",
+    "codex"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "receiptline": "4.0.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^22.18.11",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^3.2.4"
+  }
+}

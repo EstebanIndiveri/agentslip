@@ -1,0 +1,19 @@
+{
+  "agent": "Codex",
+  "event": "Stop",
+  "source": "https://learn.chatgpt.com/docs/hooks",
+  "fetched": "2026-10-28",
+  "verified_fields": [
+    "session_id",
+    "transcript_path",
+    "cwd",
+    "hook_event_name",
+    "permission_mode",
+    "model",
+    "turn_id",
+    "stop_hook_active",
+    "last_assistant_message"
+  ],
+  "assumed_fields": ["model"],
+  "notes": "turn_id, stop_hook_active, last_assistant_message, and permission_mode are documented for Stop. model is a documented Codex-specific common field (not shown in the Stop-only table; listed under Common input fields). last_assistant_message may be null per the docs; this fixture uses a string. Transcript format is explicitly not a stable interface."
+}
