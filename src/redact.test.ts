@@ -1187,6 +1187,168 @@ describe("JSON values containing backslashes", () => {
   });
 });
 
+describe("adjacent escaped JSON fields", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfacesFromSlip(
+    slip: SlipData,
+  ): Promise<{ document: string; bin: string; tcp: string }> {
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-adjesc-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: `${slip.sessionId || "s"}-tcp` }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  function load(rel: string): Record<string, unknown> {
+    return JSON.parse(fs.readFileSync(path.join(process.cwd(), rel), "utf8")) as Record<
+      string,
+      unknown
+    >;
+  }
+
+  const events: {
+    name: string;
+    build: (text: string) => Record<string, unknown>;
+  }[] = [
+    {
+      name: "Claude Code Bash PermissionRequest",
+      build: (text) => {
+        const p = load("fixtures/claude-code/permission-request.json");
+        p.tool_name = "Bash";
+        p.tool_input = { command: text, description: "curl json" };
+        return p;
+      },
+    },
+    {
+      name: "Claude Code Stop",
+      build: (text) => {
+        const p = load("fixtures/claude-code/stop.json");
+        p.last_assistant_message = text;
+        return p;
+      },
+    },
+    {
+      name: "Codex PermissionRequest",
+      build: (text) => {
+        const p = load("fixtures/codex/permission-request.json");
+        p.tool_name = "Bash";
+        p.tool_input = { command: text, description: "curl json" };
+        return p;
+      },
+    },
+    {
+      name: "Codex Stop",
+      build: (text) => {
+        const p = load("fixtures/codex/stop.json");
+        p.last_assistant_message = text;
+        return p;
+      },
+    },
+  ];
+
+  const flavors: { name: string; bs: number; quote: string }[] = [
+    { name: "escaped JSON", bs: 1, quote: '"' },
+    { name: "double-escaped JSON", bs: 3, quote: '"' },
+    { name: "escaped dict", bs: 1, quote: "'" },
+  ];
+
+  function eq(bs: number, quote: string): string {
+    return `${"\\".repeat(bs)}${quote}`;
+  }
+
+  function wrap(json: string): string {
+    return `curl -d "${json}"`;
+  }
+
+  for (const f of flavors) {
+    for (const spaced of [false, true]) {
+      const sp = spaced ? " " : "";
+      const gap = spaced ? "escaped with spaces" : "escaped compact";
+      const q = eq(f.bs, f.quote);
+
+      const pw = "AdjPw99xxx";
+      const userThenSecret = wrap(
+        `{${q}user${q}:${sp}${q}admin${q},${sp}${q}password${q}:${sp}${q}${pw}${q}}`,
+      );
+
+      it(`redact() ${f.name} ${gap}: secret after user, user survives`, () => {
+        expect(userThenSecret).toContain(pw);
+        const out = redact(userThenSecret);
+        expect(out).not.toContain(pw);
+        expect(out).toMatch(/\[redacted\]/);
+        expect(out).toContain("user");
+        expect(out).toContain("admin");
+      });
+
+      const key = "AdjKey99xx";
+      const keepName = "AdjNm99";
+      const secretNeighborSecret = wrap(
+        `{${q}password${q}:${sp}${q}${pw}${q},${sp}${q}name${q}:${sp}${q}${keepName}${q},${sp}${q}apiKey${q}:${sp}${q}${key}${q}}`,
+      );
+
+      it(`redact() ${f.name} ${gap}: secret+name+secret, name survives`, () => {
+        expect(secretNeighborSecret).toContain(pw);
+        expect(secretNeighborSecret).toContain(key);
+        const out = redact(secretNeighborSecret);
+        expect(out).not.toContain(pw);
+        expect(out).not.toContain(key);
+        expect(out).toContain("name");
+        expect(out).toContain(keepName);
+      });
+
+      for (const ev of events) {
+        it(`${ev.name} ${f.name} ${gap}: secret after user in document, .bin, and TCP`, async () => {
+          const data = await parseHook(ev.build(userThenSecret), frozen);
+          expect(data).not.toBeNull();
+          const srf = await surfacesFromSlip(data as SlipData);
+          expect(srf.document).not.toContain(pw);
+          expect(srf.bin).not.toContain(pw);
+          expect(srf.tcp).not.toContain(pw);
+          expect(srf.document).toContain("user");
+          expect(srf.document).toContain("admin");
+        });
+
+        it(`${ev.name} ${f.name} ${gap}: secret+name+secret in document, .bin, and TCP`, async () => {
+          const data = await parseHook(ev.build(secretNeighborSecret), frozen);
+          expect(data).not.toBeNull();
+          const srf = await surfacesFromSlip(data as SlipData);
+          expect(srf.document).not.toContain(pw);
+          expect(srf.document).not.toContain(key);
+          expect(srf.bin).not.toContain(pw);
+          expect(srf.bin).not.toContain(key);
+          expect(srf.tcp).not.toContain(pw);
+          expect(srf.tcp).not.toContain(key);
+          expect(srf.document).toContain("name");
+          expect(srf.bin).toContain("name");
+          expect(srf.tcp).toContain("name");
+        });
+      }
+    }
+  }
+});
+
 describe("double-escaped JSON in a Bash command", () => {
   it("redacts apiKey after a second stringify", () => {
     const needle = "EscJsonBashLeak99";

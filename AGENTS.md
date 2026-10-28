@@ -51,6 +51,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   23. Drop the `budget.used` guard in `walkDeep` → `RawPastBudget99` appears raw.
   24. Drop `JSON_STRING_UNCLOSED` → unclosed `{"apiKey":"…` / `{'password': 'a b …` and space-in-value filled-straddle tests fail.
   25. Revert the JSON_STRING / JSON_STRING_UNCLOSED value class to `[^"'\\]` → JSON-backslash leak tests fail.
+  26. Restore the old value alternation `(?!\4)[^\\]|\\.` (lookahead only on the non-escape branch) → adjacent escaped-JSON neighbor tests fail.
 
 ## Adding an agent
 
