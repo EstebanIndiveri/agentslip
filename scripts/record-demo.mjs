@@ -160,13 +160,20 @@ async function main() {
     frames.push(p);
   };
 
+  async function hold(n) {
+    for (let i = 0; i < n; i++) {
+      await wait(200);
+      await shot();
+    }
+  }
+
   lines.push(`$ git -C ${gitRepo} rev-parse --abbrev-ref HEAD`);
   lines.push(branch);
   lines.push(`$ git -C ${gitRepo} diff --shortstat`);
   lines.push(` ${shortstat}`);
   lines.push(`$ node dist/cli.js hook   # compiled binary; cwd=${repoName}`);
   await paint();
-  await shot();
+  await hold(8);
 
   const stop = hookPayload("Stop");
   const stopRes = runHook(stop);
@@ -176,10 +183,7 @@ async function main() {
   await page.locator("#roll").evaluate((el) => {
     el.src = el.src.split("?")[0] + "?t=" + Date.now();
   });
-  for (let i = 0; i < 8; i++) {
-    await wait(200);
-    await shot();
-  }
+  await hold(28);
 
   lines.push(`$ node dist/cli.js hook   # PermissionRequest → NEEDS YOU`);
   await paint();
@@ -191,14 +195,10 @@ async function main() {
   await page.locator("#roll").evaluate((el) => {
     el.src = el.src.split("?")[0] + "?t=" + Date.now();
   });
-  for (let i = 0; i < 10; i++) {
-    await wait(200);
-    await shot();
-  }
+  await hold(32);
   lines.push("$");
   await paint();
-  await wait(400);
-  await shot();
+  await hold(6);
 
   await browser.close();
   viewer.kill("SIGTERM");

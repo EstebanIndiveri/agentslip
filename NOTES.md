@@ -47,6 +47,18 @@ Branch `cursor/agentslip-v0.1-4fa6`. See git log for HEAD.
   6. `ESPOS_CUT=false` → 7 tests fail (cut sequence + snapshots)
 - Demo GIF unchanged (no visual change): `docs/media/agentslip-demo.gif`
 
+## SEO / pre-launch batch (2026-10-28)
+
+- `prepare` + `files` (`dist`, `viewer/dist`). `npm pack` then `npm install -g` of the tarball and `npm link` both put `agentslip` on PATH; `agentslip test` exit 0 in a temp HOME.
+- `npm install -g github:EstebanIndiveri/agentslip` **not tested** (repo is private).
+- README: audit H1 + first paragraph; stdout `{}` for every event; tested hardware none; Why not Bluetooth (v0.2); How it was built.
+- Issue forms: printer-report, agent-request, config.yml. No workflows.
+- CHANGELOG.md 0.1.0 from implemented facts.
+- Social preview: `docs/media/social-preview.png` 1280×640, 108383 bytes.
+- GIF re-recorded: `docs/media/agentslip-demo.gif` 960×540, 14.8 s, 208982 bytes, compiled `node dist/cli.js hook` in a real temp git repo (`fix/parser`, `1 file changed, 1 insertion(+)`), DONE then NEEDS YOU.
+- Orphan `gh-pages` `ae237ce212e28cc9d7e613f551293cb45a0cd621`: `.nojekyll`, `index.html`, `style.css`, 3 example SVGs. Pages **not** enabled.
+- Re-run: npm ci (prepare builds), typecheck, test 68+2, audit 0. All six mutations failed then reverted.
+
 ## Blockers
 
 - No physical ESC/POS printer. TCP tests use a local fake server only.
