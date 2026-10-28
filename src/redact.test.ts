@@ -529,6 +529,11 @@ describe("isSecretName false positives (must stay visible)", () => {
     { name: "JSX key={item.id}", text: "<li key={item.id}>", needle: "item.id" },
     { name: '{"key": "Enter"}', text: '{"key": "Enter"}', needle: "Enter" },
     { name: "TURKEY=1", text: "TURKEY=keepTurkey99", needle: "keepTurkey99" },
+    {
+      name: '{"key":"path with backslash"}',
+      text: `{${'"'}key${'"'}:${'"'}C:${"\\"}${"keepBsKey99"}${'"'}}`,
+      needle: "keepBsKey99",
+    },
   ];
 
   for (const c of keep) {
@@ -1015,6 +1020,170 @@ describe("unclosed JSON and dict values", () => {
     const out = redact(text);
     expect(out).not.toContain(needle);
     expect(out).toMatch(/\[redacted\]/);
+  });
+});
+
+describe("JSON values containing backslashes", () => {
+  const homes: string[] = [];
+  const prevHome = process.env.AGENTSLIP_HOME;
+  afterEach(() => {
+    for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+    if (prevHome === undefined) delete process.env.AGENTSLIP_HOME;
+    else process.env.AGENTSLIP_HOME = prevHome;
+  });
+
+  async function surfacesFromSlip(
+    slip: SlipData,
+  ): Promise<{ document: string; bin: string; tcp: string }> {
+    const { document } = buildDocument(slip, { widthMm: 58, ticketNo: 1 });
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-bsjson-"));
+    homes.push(home);
+    process.env.AGENTSLIP_HOME = home;
+    const cfgFile = defaultConfig();
+    cfgFile.driver = "file";
+    await printSlip(slip, cfgFile);
+    const bin = fs.readFileSync(cfgFile.file.path).toString("latin1");
+    const { server, port, received } = await listen();
+    try {
+      const cfgTcp = defaultConfig();
+      cfgTcp.driver = "escpos-tcp";
+      cfgTcp.escpos = { host: "127.0.0.1", port };
+      const printed = await printSlip({ ...slip, sessionId: `${slip.sessionId || "s"}-tcp` }, cfgTcp);
+      expect(printed.printed).toBe(true);
+      const tcp = (await received).toString("latin1");
+      return { document, bin, tcp };
+    } finally {
+      server.close();
+    }
+  }
+
+  function load(rel: string): Record<string, unknown> {
+    return JSON.parse(fs.readFileSync(path.join(process.cwd(), rel), "utf8")) as Record<
+      string,
+      unknown
+    >;
+  }
+
+  const q = '"';
+  const sq = "'";
+  const bs = "\\";
+  const cases: { name: string; needle: string; text: string }[] = [
+    {
+      name: "nested JSON password with backslash",
+      needle: "BsNest99",
+      text: `{${q}db${q}:{${q}password${q}:${q}p@ss${bs}${bs}w0rd-${"BsNest99"}${q}}}`,
+    },
+    {
+      name: "JSON apiKey with backslash",
+      needle: "BsApi99xx",
+      text: `{${q}apiKey${q}:${q}ab${bs}${bs}${"BsApi99xx"}${q}}`,
+    },
+    {
+      name: "JSON password with escaped quote",
+      needle: "BsEscQ99",
+      text: `{${q}password${q}: ${q}pa${bs}${q}ss${"BsEscQ99"}${q}}`,
+    },
+    {
+      name: "unclosed JSON apiKey with literal backslash-n",
+      needle: "UnclBsNl99",
+      text: `{${q}apiKey${q}:${q}${"UnclBsNl99"}${bs}n more`,
+    },
+    {
+      name: "Python dict password with backslash",
+      needle: "BsPy99xxx",
+      text: `{${sq}password${sq}: ${sq}p@ss${bs}w0rd-${"BsPy99xxx"}${sq}}`,
+    },
+    {
+      name: "escaped JSON password with backslash",
+      needle: "BsEsc99xx",
+      text: `{${bs}${q}password${bs}${q}:${bs}${q}p@ss${bs}${bs}w0rd-${"BsEsc99xx"}${bs}${q}}`,
+    },
+    {
+      name: "mismatched-quote JSON apiKey",
+      needle: "MmQuote99",
+      text: `{${q}apiKey${q}:${q}${"MmQuote99"}${sq}}`,
+    },
+    {
+      name: "Google private_key_id",
+      needle: "GaSaKeyId99",
+      text: `{${q}private_key_id${q}: ${q}${"GaSaKeyId99"}${q}}`,
+    },
+  ];
+
+  const events: {
+    name: string;
+    build: (text: string) => Record<string, unknown>;
+  }[] = [
+    {
+      name: "Claude Code Bash PermissionRequest",
+      build: (text) => {
+        const p = load("fixtures/claude-code/permission-request.json");
+        p.tool_name = "Bash";
+        p.tool_input = { command: `echo ${text} > d.json`, description: "write json" };
+        return p;
+      },
+    },
+    {
+      name: "Claude Code Stop",
+      build: (text) => {
+        const p = load("fixtures/claude-code/stop.json");
+        p.last_assistant_message = `echo ${text} > d.json`;
+        return p;
+      },
+    },
+    {
+      name: "Codex PermissionRequest",
+      build: (text) => {
+        const p = load("fixtures/codex/permission-request.json");
+        p.tool_name = "Bash";
+        p.tool_input = { command: `echo ${text} > d.json`, description: "write json" };
+        return p;
+      },
+    },
+    {
+      name: "Codex Stop",
+      build: (text) => {
+        const p = load("fixtures/codex/stop.json");
+        p.last_assistant_message = `echo ${text} > d.json`;
+        return p;
+      },
+    },
+  ];
+
+  for (const c of cases) {
+    it(`redact() hides ${c.name}`, () => {
+      expect(c.text).toContain(c.needle);
+      const out = redact(c.text);
+      expect(out).not.toContain(c.needle);
+      expect(out).toMatch(/\[redacted\]/);
+    });
+
+    for (const ev of events) {
+      it(`${ev.name} hides ${c.name} in document, .bin, and TCP`, async () => {
+        const data = await parseHook(ev.build(c.text), frozen);
+        expect(data).not.toBeNull();
+        const slip = data as SlipData;
+        if (slip.request) expect(slip.request).not.toContain(c.needle);
+        const srf = await surfacesFromSlip(slip);
+        expect(srf.document).not.toContain(c.needle);
+        expect(srf.bin).not.toContain(c.needle);
+        expect(srf.tcp).not.toContain(c.needle);
+      });
+    }
+  }
+
+  it("false-positive keep cases still pass next to JSON backslashes", () => {
+    const keep = [
+      { text: `key=${"keepBareKey99"}`, needle: "keepBareKey99" },
+      { text: `{${q}key${q}: ${q}Enter${q}}`, needle: "Enter" },
+      { text: `TURKEY=${"keepTurkey99"}`, needle: "keepTurkey99" },
+      { text: `{${q}key${q}:${q}C:${bs}${"keepBsKey99"}${q}}`, needle: "keepBsKey99" },
+    ];
+    for (const k of keep) {
+      const out = redact(k.text);
+      expect(out).toContain(k.needle);
+      expect(out).not.toContain("[redacted]");
+    }
   });
 });
 

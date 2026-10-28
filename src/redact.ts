@@ -22,6 +22,7 @@
  * MUTATION CHECK: JSON_STRING `\\?` (single escape) → Bash double-escaped JSON fails.
  * MUTATION CHECK: drop JSON_STRING_UNCLOSED → unclosed `{"apiKey":"…` and
  * space-in-value filled-straddle tests fail.
+ * MUTATION CHECK: revert JSON value class to `[^"'\\]` → JSON-backslash leak tests fail.
  */
 export const REDACTION_ENABLED = true;
 
@@ -72,16 +73,21 @@ const MYSQL_DASH_P = /\bmysql\w{0,32}\b[^|&;\n]{0,512}/gi;
  */
 const ASSIGN_HEAD = /\b([A-Za-z_][A-Za-z0-9_-]{0,255})(\s{0,8})([=:])(\s{0,8})/g;
 
-/** "name": "value", \"name\":\"value\", \\\"name\\\":\\\"value\\\", 'name': 'value' */
+/**
+ * "name": "value", \"name\":\"value\", \\\"name\\\":\\\"value\\\", 'name': 'value'.
+ * Value allows `\\.` escapes (so `p@ss\\w0rd` / `pa\"ss` still match) up to 4096 chars.
+ * MUTATION CHECK: revert the value group to `[^"'\\]{0,4096}` → backslash leak tests fail.
+ */
 const JSON_STRING =
-  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])([^"'\\]{0,4096})(\4)/g;
+  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])((?:(?!\4)[^\\]|\\.){0,4096})(\4)/g;
 /**
  * Same as JSON_STRING but the value runs to end of field with no closing quote.
- * Covers clipField cutting inside `"correct horse…"` and a truncated `{"apiKey":"…`.
+ * Covers clipField cutting inside `"correct horse…"` and a truncated `{"apiKey":"…`,
+ * including a literal `\n` in the unclosed value.
  * MUTATION CHECK: drop this → unclosed JSON / dict tests fail.
  */
 const JSON_STRING_UNCLOSED =
-  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])([^"'\\]{0,4096})$/g;
+  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])((?:(?!\4)[^\\]|\\.){0,4096})$/g;
 /** "name": 1234 or \"name\": 1234 */
 const JSON_NUMBER =
   /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(-?\d[\d.]{0,63})/g;
@@ -124,7 +130,7 @@ export function isSecretName(name: string, value?: string): boolean {
 
 function isClearlyCredential(name: string): boolean {
   if (name === "DATABASE_URL") return true;
-  if (/_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS|PWD)$/i.test(name)) return true;
+  if (/_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS|PWD)(?:_ID)?$/i.test(name)) return true;
   if (/-(?:key|token|secret|password|passwd|pass)$/i.test(name)) return true;
   if (/^(?:PASSWORD|SECRET|PASSWD)$/i.test(name)) return true;
   if (/[a-z0-9](?:Secret|Password|Passwd)$/.test(name)) return true;

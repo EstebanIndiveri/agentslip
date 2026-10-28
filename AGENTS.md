@@ -50,6 +50,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   22. `clipField` hard-cut (keep the window when there is no whitespace) → 9 KB no-space token is not `"…"`.
   23. Drop the `budget.used` guard in `walkDeep` → `RawPastBudget99` appears raw.
   24. Drop `JSON_STRING_UNCLOSED` → unclosed `{"apiKey":"…` / `{'password': 'a b …` and space-in-value filled-straddle tests fail.
+  25. Revert the JSON_STRING / JSON_STRING_UNCLOSED value class to `[^"'\\]` → JSON-backslash leak tests fail.
 
 ## Adding an agent
 

@@ -74,6 +74,17 @@ describe("redact ReDoS guards (100 KB)", () => {
     const ms = timed("a= x4352", input);
     expect(ms).toBeLessThan(50);
   });
+
+  it("redact() 8.7 KB of JSON backslashes and quotes finishes under 50 ms", () => {
+    const q = '"';
+    const head = `{${q}password${q}:${q}`;
+    const unit = `${"\\"}${q}`;
+    const n = Math.floor((8704 - head.length) / unit.length);
+    const input = `${head}${unit.repeat(n)}${"x".repeat(8704 - head.length - unit.length * n)}`;
+    expect(input.length).toBe(8704);
+    const ms = timed("json bs+quotes 8704", input);
+    expect(ms).toBeLessThan(50);
+  });
 });
 
 describe("uncapped regex complexity (100 KB, no field cap)", () => {
