@@ -27,9 +27,25 @@
 - No GitHub Actions (owner choice). No Bluetooth/USB/CUPS in v0.1.
 - No hardware printer in Cloud; README says no model was verified.
 
-## Tests actually run in Cloud (2026-10-28)
+## Tests actually run in Cloud (review-fix, 2026-10-28)
 
-See the PR / §12 report for the post-review-fix run (HEAD after this branch). Earlier d00f2d9 run: Vitest 43 + Playwright 2, GIF 15.0 s.
+Branch `cursor/agentslip-v0.1-4fa6`. See git log for HEAD.
+
+- `npm ci` — pass
+- `npm run build` — pass
+- `npm run typecheck` — pass
+- `npm test` — Vitest 68 passed + Playwright Chromium 2 passed
+- `npm audit` — 0 vulnerabilities after vitest 4.1.12
+- Compiled hook e2e: never-closing stdin, FIFO transcript, large transcript — pass
+- Clean HOME: `npm ci`/`build` already done; `npm link` to a user prefix (`NPM_CONFIG_PREFIX`) — `agentslip hook` exit 0, stdout `{}`; `node dist/cli.js install --claude --write` stores `/exec-daemon/node /workspace/dist/cli.js hook`. System-prefix `npm link` was EACCES (`/usr/lib/node_modules`).
+- Mutations (then reverted):
+  1. `defaultConfig().redaction.enabled=false` → leak tests fail (2)
+  2. `STDIN_MS=60000` → never-closing stdin e2e fail (exit null after 4s killer)
+  3. `readFileSync` on FIFO, no `isFile` → FIFO test hang/timeout (8s)
+  4. install overwrite on invalid JSON → `invalid JSON aborts without overwrite` fail
+  5. `REDACTION_ENABLED=false` → 15/15 redact tests fail
+  6. `ESPOS_CUT=false` → 7 tests fail (cut sequence + snapshots)
+- Demo GIF unchanged (no visual change): `docs/media/agentslip-demo.gif`
 
 ## Blockers
 
