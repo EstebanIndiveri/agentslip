@@ -19,13 +19,17 @@
  * MUTATION CHECK: drop redactDeep budget → adversarial MultiEdit exceeds 500 ms
  * and text past the budget appears raw.
  * MUTATION CHECK: drop redactDeep depth guard → 10k-nest test throws.
- * MUTATION CHECK: JSON_STRING / JSON_STRING_UNCLOSED `\\?` (single escape) →
- * Bash double-escaped JSON fails.
- * MUTATION CHECK: drop JSON_STRING_UNCLOSED → unclosed `{"apiKey":"…` and
- * space-in-value filled-straddle tests fail.
- * MUTATION CHECK: revert JSON value class to `[^"'\\]` → JSON-backslash leak tests fail.
- * MUTATION CHECK: value alternation `(?!\4)[^\\]|\\.` (lookahead only on the
- * non-escape branch) → adjacent escaped-JSON neighbor tests fail.
+ * MUTATION CHECK: JSON_QUOTE_BS_MAX = 1 → Bash double-escaped JSON fails.
+ * MUTATION CHECK: require a closing quote (drop unclosed values) → unclosed
+ * `{"apiKey":"…` / `{'password': 'a b …` and space-in-value filled-straddle tests fail.
+ * MUTATION CHECK: treat a longer backslash-run + quote as the closer (no
+ * lookahead) → escaped-quote-in-escaped-JSON tests fail.
+ * MUTATION CHECK: pair `\\.` instead of counting the backslash run →
+ * escaped-quote-in-escaped-JSON tests fail.
+ * MUTATION CHECK: reject `\\` inside JSON field names / do not strip them
+ * before isSecretName → backslash-in-field-name tests fail.
+ * MUTATION CHECK: restore module-level redactDeepStats and ignore the per-call
+ * stats argument → per-call stats test fails.
  */
 export const REDACTION_ENABLED = true;
 
@@ -77,25 +81,12 @@ const MYSQL_DASH_P = /\bmysql\w{0,32}\b[^|&;\n]{0,512}/gi;
 const ASSIGN_HEAD = /\b([A-Za-z_][A-Za-z0-9_-]{0,255})(\s{0,8})([=:])(\s{0,8})/g;
 
 /**
- * "name": "value", \"name\":\"value\", \\\"name\\\":\\\"value\\\", 'name': 'value'.
- * Value allows `\\.` escapes (so `p@ss\\w0rd` / `pa\"ss` still match) up to 4096 chars.
- * Lookahead sits in front of both branches so `\\.` cannot eat the closer `\"`.
- * MUTATION CHECK: revert the value group to `[^"'\\]{0,4096}` → backslash leak tests fail.
- * MUTATION CHECK: `(?!\4)[^\\]|\\.` (lookahead only on `[^\\]`) → adjacent escaped-JSON tests fail.
+ * Quote prefix `\\{0,N}"` / `\\{0,N}'` (raw JSON, escaped JSON, double-escaped).
+ * MUTATION CHECK: set to 1 → Bash double-escaped JSON test fails.
  */
-const JSON_STRING =
-  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])((?:(?!\4)(?:[^\\]|\\.)){0,4096})(\4)/g;
-/**
- * Same as JSON_STRING but the value runs to end of field with no closing quote.
- * Covers clipField cutting inside `"correct horse…"` and a truncated `{"apiKey":"…`,
- * including a literal `\n` in the unclosed value.
- * MUTATION CHECK: drop this → unclosed JSON / dict tests fail.
- */
-const JSON_STRING_UNCLOSED =
-  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(\\{0,16}["'])((?:(?!\4)(?:[^\\]|\\.)){0,4096})$/g;
-/** "name": 1234 or \"name\": 1234 */
-const JSON_NUMBER =
-  /(\\{0,16}["'])([A-Za-z_][A-Za-z0-9_-]{0,255})(\1)\s{0,8}:\s{0,8}(-?\d[\d.]{0,63})/g;
+export const JSON_QUOTE_BS_MAX = 16;
+const JSON_VALUE_MAX = 4096;
+const JSON_NAME_MAX = 256;
 
 const LONG_LINE = 160;
 const VALUE_SCAN_MAX = 4096;
@@ -219,15 +210,17 @@ export function clipField(text: string, max = REDACT_MAX_CHARS): string {
  * and a unique marker past the budget appears raw.
  * MUTATION CHECK: drop the depth guard → 10k-nest test throws RangeError.
  *
- * redactDeepStats is a test-only mutable global: chars/calls walkDeep actually
- * fed to redact().
+ * Stats are per call: pass an object to receive chars/calls walkDeep fed to
+ * redact(). MUTATION CHECK: restore a module-level global and ignore `stats`
+ * → per-call stats test fails.
  */
-export const redactDeepStats = { chars: 0, calls: 0 };
+export type RedactDeepStats = { chars: number; calls: number };
 
-export function redactDeep(value: unknown, enabled = true): unknown {
-  redactDeepStats.chars = 0;
-  redactDeepStats.calls = 0;
-  return walkDeep(value, enabled, 0, { used: 0 });
+export function redactDeep(value: unknown, enabled = true, stats?: RedactDeepStats): unknown {
+  const s: RedactDeepStats = stats ?? { chars: 0, calls: 0 };
+  s.chars = 0;
+  s.calls = 0;
+  return walkDeep(value, enabled, 0, { used: 0 }, s);
 }
 
 function walkDeep(
@@ -235,22 +228,23 @@ function walkDeep(
   enabled: boolean,
   depth: number,
   budget: { used: number },
+  stats: RedactDeepStats,
 ): unknown {
   if (depth >= REDACT_DEEP_MAX_DEPTH) return "…";
   if (budget.used >= REDACT_DEEP_MAX_CHARS) return "…";
   if (typeof value === "string") {
     budget.used += value.length;
-    redactDeepStats.chars += value.length;
-    redactDeepStats.calls += 1;
+    stats.chars += value.length;
+    stats.calls += 1;
     return redact(value, enabled);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => walkDeep(item, enabled, depth + 1, budget));
+    return value.map((item) => walkDeep(item, enabled, depth + 1, budget, stats));
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = walkDeep(v, enabled, depth + 1, budget);
+      out[k] = walkDeep(v, enabled, depth + 1, budget, stats);
     }
     return out;
   }
@@ -298,29 +292,158 @@ export function complexityCases(): { name: string; re: RegExp; input: string }[]
   ];
 }
 
+function readQuotePrefix(
+  text: string,
+  i: number,
+): { bs: number; q: string; raw: string; end: number } | null {
+  if (i >= text.length) return null;
+  let n = 0;
+  while (n < JSON_QUOTE_BS_MAX && i + n < text.length && text[i + n] === "\\") n += 1;
+  const q = text[i + n];
+  if (q !== '"' && q !== "'") return null;
+  return { bs: n, q, raw: text.slice(i, i + n + 1), end: i + n + 1 };
+}
+
+function readJsonName(text: string, i: number): { raw: string; decoded: string; end: number } | null {
+  if (i >= text.length || !/[A-Za-z_]/.test(text[i] as string)) return null;
+  const start = i;
+  i += 1;
+  while (i < text.length && i - start < JSON_NAME_MAX) {
+    const c = text[i] as string;
+    if (/[A-Za-z0-9_-]/.test(c)) {
+      i += 1;
+      continue;
+    }
+    if (c === "\\" && i + 1 < text.length) {
+      const next = text[i + 1] as string;
+      if (next === '"' || next === "'") break;
+      i += 2;
+      continue;
+    }
+    break;
+  }
+  const raw = text.slice(start, i);
+  if (!raw) return null;
+  return { raw, decoded: raw.replace(/\\/g, ""), end: i };
+}
+
+function skipColon(text: string, i: number): number | null {
+  let j = i;
+  let spaces = 0;
+  while (j < text.length && spaces < 8 && (text[j] === " " || text[j] === "\t")) {
+    j += 1;
+    spaces += 1;
+  }
+  if (j >= text.length || text[j] !== ":") return null;
+  j += 1;
+  spaces = 0;
+  while (j < text.length && spaces < 8 && (text[j] === " " || text[j] === "\t")) {
+    j += 1;
+    spaces += 1;
+  }
+  return j;
+}
+
+function looksLikeJsonCloserContext(text: string, pos: number): boolean {
+  let p = pos;
+  while (p < text.length && (text[p] === " " || text[p] === "\t")) p += 1;
+  if (p >= text.length) return true;
+  const c = text[p] as string;
+  return c === "," || c === "}" || c === "]" || c === "\n" || c === "\r";
+}
+
+function scanQuotedValue(
+  text: string,
+  i: number,
+  k: number,
+  q: string,
+): { raw: string; end: number; closed: boolean } {
+  const max = Math.min(text.length, i + JSON_VALUE_MAX);
+  let j = i;
+  while (j < max) {
+    if (text[j] !== "\\") {
+      if (k === 0 && text[j] === q) {
+        return { raw: text.slice(i, j), end: j + 1, closed: true };
+      }
+      j += 1;
+      continue;
+    }
+    let n = 0;
+    while (j + n < max && text[j + n] === "\\") n += 1;
+    const after = j + n < text.length ? text[j + n] : "";
+    if (after === q) {
+      if (n === k) {
+        return { raw: text.slice(i, j), end: j + n + 1, closed: true };
+      }
+      if (n > k) {
+        const afterQuote = j + n + 1;
+        if (looksLikeJsonCloserContext(text, afterQuote) && (n - k) % 2 === 0) {
+          const extra = n - k;
+          return { raw: text.slice(i, j + extra), end: j + extra + k + 1, closed: true };
+        }
+        j += n + 1;
+        continue;
+      }
+      j += n + 1;
+      continue;
+    }
+    j += Math.max(n, 1);
+  }
+  return { raw: text.slice(i, j), end: j, closed: false };
+}
+
+function readJsonNumber(text: string, i: number): { raw: string; end: number } | null {
+  if (i >= text.length) return null;
+  let j = i;
+  if (text[j] === "-") j += 1;
+  if (j >= text.length || !/\d/.test(text[j] as string)) return null;
+  j += 1;
+  while (j < text.length && j - i < 64 && /[\d.]/.test(text[j] as string)) j += 1;
+  return { raw: text.slice(i, j), end: j };
+}
+
+function tryRedactJsonField(text: string, i: number): { end: number; out: string } | null {
+  const q1 = readQuotePrefix(text, i);
+  if (!q1) return null;
+  const name = readJsonName(text, q1.end);
+  if (!name) return null;
+  const q2 = readQuotePrefix(text, name.end);
+  if (!q2 || q2.q !== q1.q) return null;
+  const afterColon = skipColon(text, q2.end);
+  if (afterColon === null) return null;
+
+  const q3 = readQuotePrefix(text, afterColon);
+  if (q3) {
+    const val = scanQuotedValue(text, q3.end, q3.bs, q3.q);
+    if (!val.closed && val.end !== text.length) return null;
+    const secret = isSecretName(name.decoded, val.raw);
+    const out = secret
+      ? `${q1.raw}${name.raw}${q2.raw}: ${q3.raw}[redacted]${val.closed ? q3.raw : ""}`
+      : text.slice(i, val.end);
+    return { end: val.end, out };
+  }
+  const num = readJsonNumber(text, afterColon);
+  if (num) {
+    const secret = isSecretName(name.decoded, num.raw);
+    const out = secret ? `${q1.raw}${name.raw}${q2.raw}: [redacted]` : text.slice(i, num.end);
+    return { end: num.end, out };
+  }
+  return null;
+}
+
 function redactJsonLike(text: string): string {
-  let out = text;
-  JSON_STRING.lastIndex = 0;
-  out = out.replace(
-    JSON_STRING,
-    (m, q1: string, name: string, q2: string, q3: string, val: string, q4: string) => {
-      if (!isSecretName(name, val)) return m;
-      return `${q1}${name}${q2}: ${q3}[redacted]${q4}`;
-    },
-  );
-  JSON_STRING_UNCLOSED.lastIndex = 0;
-  out = out.replace(
-    JSON_STRING_UNCLOSED,
-    (m, q1: string, name: string, q2: string, q3: string, val: string) => {
-      if (!isSecretName(name, val)) return m;
-      return `${q1}${name}${q2}: ${q3}[redacted]`;
-    },
-  );
-  JSON_NUMBER.lastIndex = 0;
-  out = out.replace(JSON_NUMBER, (m, q1: string, name: string, q2: string, num: string) => {
-    if (!isSecretName(name, num)) return m;
-    return `${q1}${name}${q2}: [redacted]`;
-  });
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const hit = tryRedactJsonField(text, i);
+    if (hit) {
+      out += hit.out;
+      i = hit.end;
+      continue;
+    }
+    out += text[i];
+    i += 1;
+  }
   return out;
 }
 

@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-- Documented install is clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `T=$(npm pack --silent | tail -n1)` and `npm install -g "./$T"` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
+## 0.1.2 — 2026-10-29
+
+- Escaped JSON redacts a password whose value contains an escaped quote (`{\"password\":\"pa\\\"ss …\"}`); the tail after `\\\"` is no longer left visible.
+- JSON field names may contain backslashes (`pass\\word`, `apiKey\"`).
+- `redactDeep` stats are per call (pass a `{ chars, calls }` object); they are not a module-level global.
+- README: a JSON string value longer than 4096 characters stays visible; assignment values (`API_KEY=…`) are still redacted. Secrets split across lines (bash `\` continuation, `postgres://admin:` then a newline then the password) are a known limitation.
+- README links the [published demo](https://estebanindiveri.github.io/agentslip/) and [releases](https://github.com/EstebanIndiveri/agentslip/releases).
+- Offline pack-global bundle names are derived from `package.json` dependencies (plus nested deps). `npm pack` without `--ignore-scripts` is tested so a broken `prepare` fails.
+- Documented install (from 0.1.1, previously Unreleased): clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `T=$(npm pack --silent | tail -n1)` and `npm install -g "./$T"` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
 
 ## 0.1.1 — 2026-10-28
 

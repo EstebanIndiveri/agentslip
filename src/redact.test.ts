@@ -11,7 +11,6 @@ import {
   clipField,
   redact,
   redactDeep,
-  redactDeepStats,
   REDACT_DEEP_MAX_CHARS,
   REDACT_DEEP_MAX_DEPTH,
   REDACT_MAX_CHARS,
@@ -1369,12 +1368,13 @@ describe("redactDeep budget and depth", () => {
       new_string: "eyJ-".repeat(2048),
     }));
     const t0 = performance.now();
-    const out = redactDeep({ file_path: "x.ts", edits });
+    const stats = { chars: 0, calls: 0 };
+    const out = redactDeep({ file_path: "x.ts", edits }, true, stats);
     const ms = performance.now() - t0;
     expect(ms).toBeLessThan(500);
     expect(JSON.stringify(out)).toContain("…");
-    expect(redactDeepStats.chars).toBeLessThanOrEqual(REDACT_DEEP_MAX_CHARS + REDACT_MAX_CHARS);
-    expect(redactDeepStats.calls).toBeLessThan(8);
+    expect(stats.chars).toBeLessThanOrEqual(REDACT_DEEP_MAX_CHARS + REDACT_MAX_CHARS);
+    expect(stats.calls).toBeLessThan(8);
   });
 
   it("does not leave raw text past the budget", () => {
@@ -1397,5 +1397,77 @@ describe("redactDeep budget and depth", () => {
       result = redactDeep(o);
     }).not.toThrow();
     expect(JSON.stringify(result)).toContain("…");
+  });
+
+  it("stats are per call, not a shared module global", () => {
+    const a = { chars: 0, calls: 0 };
+    const b = { chars: 0, calls: 0 };
+    redactDeep("x".repeat(100), true, a);
+    redactDeep("y".repeat(10), true, b);
+    expect(a.chars).toBe(100);
+    expect(a.calls).toBe(1);
+    expect(b.chars).toBe(10);
+    expect(b.calls).toBe(1);
+    redactDeep("z".repeat(5), true, a);
+    expect(a.chars).toBe(5);
+    expect(b.chars).toBe(10);
+  });
+});
+
+describe("issue #3 redaction follow-ups", () => {
+  const q = '"';
+  const bs = "\\";
+
+  it("hides an escaped quote inside an escaped-JSON password value", () => {
+    const needle = "Zq8Tail99";
+    const text = `{${bs}${q}password${bs}${q}:${bs}${q}pa${bs}${bs}${bs}${q}ss ${needle}${bs}${q}}`;
+    expect(text).toContain(needle);
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+  });
+
+  it("redacts an assignment longer than 4096 characters entirely", () => {
+    const needle = "AssignLongNeedle99";
+    const text = `API_KEY=${needle}${"x".repeat(5000)}END`;
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).not.toContain("END");
+    expect(out).toMatch(/API_KEY=\[redacted\]/);
+  });
+
+  it("leaves a JSON string value longer than 4096 characters visible (JSON-only cap)", () => {
+    const needle = "JsonLongVisible99";
+    const text = `{${q}apiKey${q}:${q}${needle}${"x".repeat(5000)}END${q}}`;
+    const out = redact(text);
+    expect(out).toContain(needle);
+    expect(out).not.toMatch(/\[redacted\]/);
+  });
+
+  it("redacts a JSON field name that contains a backslash", () => {
+    const needle = "BsNameLeak99";
+    const cases = [
+      `{${q}pass${bs}${bs}word${q}:${q}${needle}${q}}`,
+      `{${bs}${q}pass${bs}${bs}word${bs}${q}:${bs}${q}${needle}${bs}${q}}`,
+      `{${q}apiKey${bs}${q}:${q}${needle}${q}}`,
+    ];
+    for (const text of cases) {
+      expect(text, text).toContain(needle);
+      const out = redact(text);
+      expect(out, text).not.toContain(needle);
+      expect(out, text).toMatch(/\[redacted\]/);
+    }
+  });
+
+  it("does not match a secret split across lines (known limitation)", () => {
+    const needle = "SplitLineSecret99";
+    const cases = [
+      `API_KEY=abc${bs}\n${needle}`,
+      `postgres://admin:\n${needle}@host/db`,
+    ];
+    for (const text of cases) {
+      expect(text).toContain(needle);
+      expect(redact(text)).toContain(needle);
+    }
   });
 });
