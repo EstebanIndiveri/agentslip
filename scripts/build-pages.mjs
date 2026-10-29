@@ -57,6 +57,12 @@ if (svgs.length < 3) {
   process.exit(1);
 }
 
+const ALT = {
+  done: "DONE slip: repo demo-app, branch main, 1 file changed, 3 insertions",
+  "needs-you": "NEEDS YOU slip: the agent is asking permission to run a command",
+  session: "SESSION slip: duration, turns, tool calls and token counts from a sample transcript",
+};
+
 fs.rmSync(dest, { recursive: true, force: true });
 fs.mkdirSync(path.join(dest, "slips"), { recursive: true });
 for (const f of svgs) {
@@ -66,7 +72,7 @@ const newestFirst = [...svgs].reverse();
 const cards = newestFirst
   .map((f) => {
     const kind = f.includes("needs-you") ? "needs-you" : f.includes("session") ? "session" : "done";
-    return `<article class="slip"><img src="./slips/${f}" alt="${kind} slip"/><div class="meta"><span>${kind}</span><span>example</span></div></article>`;
+    return `<article class="slip"><img src="./slips/${f}" alt="${ALT[kind]}"/><div class="meta"><span>${kind}</span><span>example</span></div></article>`;
   })
   .join("\n");
 
@@ -75,14 +81,29 @@ const html = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>agentslip — virtual roll</title>
+  <title>agentslip — receipts for Claude Code and Codex (virtual paper roll preview)</title>
+  <meta name="description" content="agentslip: Claude Code and Codex hooks that print a thermal ESC/POS slip when the agent is done, needs your permission, or ends a session — or show it on a virtual paper roll. Static preview with three example slips. MIT."/>
+  <link rel="canonical" href="https://estebanindiveri.github.io/agentslip/"/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:site_name" content="agentslip"/>
+  <meta property="og:title" content="agentslip — receipts for your coding agents"/>
+  <meta property="og:description" content="Claude Code and Codex hooks that print a paper slip (DONE / NEEDS YOU / SESSION) on a network ESC/POS printer or a virtual roll in the browser."/>
+  <meta property="og:url" content="https://estebanindiveri.github.io/agentslip/"/>
+  <meta property="og:image" content="https://estebanindiveri.github.io/agentslip/social-preview.png"/>
+  <meta property="og:image:width" content="1280"/>
+  <meta property="og:image:height" content="640"/>
+  <meta property="og:image:alt" content="Three agentslip receipts: DONE, NEEDS YOU and SESSION"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="agentslip — receipts for your coding agents"/>
+  <meta name="twitter:description" content="Claude Code and Codex hooks that print a paper slip, or show it on a virtual roll. No printer required."/>
+  <meta name="twitter:image" content="https://estebanindiveri.github.io/agentslip/social-preview.png"/>
   <link rel="stylesheet" href="./style.css"/>
 </head>
 <body>
   <header class="top">
-    <h1>agentslip</h1>
-    <p class="tag">Static preview of the virtual paper roll. Three example slips. Newest on top.</p>
-    <p class="help">This page is a snapshot. Clone the repo and run <code>agentslip view</code> for a live roll.</p>
+    <h1>agentslip — receipts for your coding agents</h1>
+    <p class="tag">Claude Code and Codex hooks that print a slip when the agent is done, needs you, or ends a session. This is a static preview of the virtual paper roll: three example slips, newest on top.</p>
+    <p class="help">Live roll: install from the repo and run <code>agentslip view</code>. Source, install steps and printer notes: <a href="https://github.com/EstebanIndiveri/agentslip">github.com/EstebanIndiveri/agentslip</a>.</p>
   </header>
   <div class="printer" aria-hidden="true"><div class="slot"></div></div>
   <main class="roll">${cards}</main>
@@ -92,6 +113,15 @@ const html = `<!DOCTYPE html>
 
 fs.writeFileSync(path.join(dest, "index.html"), html);
 fs.copyFileSync(path.join(root, "viewer/src/style.css"), path.join(dest, "style.css"));
+fs.copyFileSync(path.join(root, "docs/media/social-preview.png"), path.join(dest, "social-preview.png"));
+fs.writeFileSync(
+  path.join(dest, "sitemap.xml"),
+  `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://estebanindiveri.github.io/agentslip/</loc></url>
+</urlset>
+`,
+);
 fs.writeFileSync(path.join(dest, ".nojekyll"), "");
 fs.writeFileSync(
   path.join(dest, "slips/index.json"),

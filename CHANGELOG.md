@@ -13,6 +13,8 @@
 - README links the [published demo](https://estebanindiveri.github.io/agentslip/) and [releases](https://github.com/EstebanIndiveri/agentslip/releases).
 - Offline pack-global bundle names are derived from `package.json` dependencies (plus nested deps) and throw if a listed dependency is missing from `node_modules`. A throwaway probe package's `npm pack` (no `--ignore-scripts`) fails when its `prepare` exits non-zero; agentslip's own `prepare` is checked by running `npm run prepare` on a copy of the tree.
 - Secrets split across lines (bash `\` continuation, `postgres://admin:` then a newline then the password) are deferred to v0.1.3.
+- Pages preview: description, canonical, Open Graph and Twitter card tags; sitemap; `social-preview.png` copied into the build. SESSION on the social card uses the transcript fixture (duration, turns, tools, tokens; cost stays `n/a`).
+- README: live preview (GitHub Pages) and releases links; session totals wording (nothing estimated).
 - Documented install (from 0.1.1, previously Unreleased): clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `T=$(npm pack --silent | tail -n1)` and `npm install -g "./$T"` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
 
 ## 0.1.1 — 2026-10-28
