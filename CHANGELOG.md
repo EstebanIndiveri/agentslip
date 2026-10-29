@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Pages / viewer: `.slip img`, `.slip svg`, and `.slip object` scale to the paper width so the GitHub Pages preview no longer overflows the cream slip.
+
 ## 0.1.2 — 2026-10-28
 
 - Viewer: rejects requests whose Host header is not the local viewer (DNS-rebinding guard) and returns 400 on malformed URLs.
