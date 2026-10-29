@@ -2,9 +2,10 @@
 /**
  * Render docs/media/social-preview.png at exactly 1280×640 and
  * docs/media/social-preview-1080.png at 1080×1080.
- * DONE / NEEDS YOU from 58 mm SVG snapshots. SESSION from the small
- * transcript fixture (duration, turns, tools, tokens; cost stays n/a),
- * same as Pages. No vendor logos.
+ * All three tickets come from the same fixtures as Pages, in one
+ * AGENTSLIP_HOME, at widthMm 80 (48 columns) so the SESSION token row
+ * does not split "out". Ticket numbers are #0001, #0002, #0003.
+ * No vendor logos.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,7 +15,6 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const snaps = path.join(root, "test/__snapshots__");
 const outWide = path.join(root, "docs/media/social-preview.png");
 const outSquare = path.join(root, "docs/media/social-preview-1080.png");
 const cli = path.join(root, "dist/cli.js");
@@ -27,55 +27,93 @@ function dataUriFromSvg(svg) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function snapshotSvg(file) {
-  return fs.readFileSync(path.join(snaps, file), "utf8");
+function plainText(svg) {
+  return svg.replace(/<[^>]+>/g, "").replace(/&#xa0;/g, " ");
 }
 
-function generateSessionSvg() {
+function generateSlips() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-social-"));
+  fs.writeFileSync(path.join(home, "config.json"), `${JSON.stringify({ widthMm: 80 }, null, 2)}\n`);
   const env = {
     ...process.env,
     AGENTSLIP_HOME: home,
+    AGENTSLIP_GIT_REPO: "demo-app",
+    AGENTSLIP_GIT_BRANCH: "main",
+    AGENTSLIP_GIT_SHORTSTAT: "1 file changed, 3 insertions(+)",
     AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
     TZ: "UTC",
   };
-  const payload = JSON.parse(
-    fs.readFileSync(path.join(root, "fixtures/claude-code/session-end.json"), "utf8"),
-  );
-  payload.transcript_path = path.join(root, "fixtures/transcripts/claude-session.jsonl");
-  const r = spawnSync(process.execPath, [cli, "hook"], {
-    cwd: root,
-    env,
-    input: JSON.stringify(payload),
-    encoding: "utf8",
+
+  function hook(relFixture, patch = {}) {
+    const payload = JSON.parse(fs.readFileSync(path.join(root, relFixture), "utf8"));
+    Object.assign(payload, patch);
+    const r = spawnSync(process.execPath, [cli, "hook"], {
+      cwd: root,
+      env,
+      input: JSON.stringify(payload),
+      encoding: "utf8",
+    });
+    if (r.status !== 0) {
+      fs.rmSync(home, { recursive: true, force: true });
+      console.error(r.stderr || r.stdout);
+      process.exit(r.status || 1);
+    }
+  }
+
+  hook("fixtures/claude-code/stop.json");
+  hook("fixtures/claude-code/permission-request.json");
+  hook("fixtures/claude-code/session-end.json", {
+    transcript_path: path.join(root, "fixtures/transcripts/claude-session.jsonl"),
   });
-  if (r.status !== 0) {
+
+  const slipsDir = path.join(home, "slips");
+  const files = fs.readdirSync(slipsDir).filter((f) => f.endsWith(".svg")).sort();
+  const byKind = {
+    done: files.find((f) => f.startsWith("0001-done-")),
+    "needs-you": files.find((f) => f.startsWith("0002-needs-you-")),
+    session: files.find((f) => f.startsWith("0003-session-")),
+  };
+  if (!byKind.done || !byKind["needs-you"] || !byKind.session) {
     fs.rmSync(home, { recursive: true, force: true });
-    console.error(r.stderr || r.stdout);
-    process.exit(r.status || 1);
-  }
-  const slips = path.join(home, "slips");
-  const file = fs.readdirSync(slips).find((f) => f.includes("-session-") && f.endsWith(".svg"));
-  if (!file) {
-    fs.rmSync(home, { recursive: true, force: true });
-    console.error("expected a SESSION svg under", slips);
+    console.error("expected 0001-done, 0002-needs-you, 0003-session; got", files);
     process.exit(1);
   }
-  const svg = fs.readFileSync(path.join(slips, file), "utf8");
+
+  const svgs = {
+    done: fs.readFileSync(path.join(slipsDir, byKind.done), "utf8"),
+    "needs-you": fs.readFileSync(path.join(slipsDir, byKind["needs-you"]), "utf8"),
+    session: fs.readFileSync(path.join(slipsDir, byKind.session), "utf8"),
+  };
   fs.rmSync(home, { recursive: true, force: true });
-  const text = svg.replace(/<[^>]+>/g, "").replace(/&#xa0;/g, " ");
-  if (!text.includes("2600") || !text.includes("300") || !/4m/.test(text)) {
-    console.error("SESSION svg missing transcript-fixture totals (2600 in / 300 out, 4m)");
+
+  const sessionText = plainText(svgs.session);
+  if (!sessionText.includes("2600 in / 300 out") || !/4m/.test(sessionText)) {
+    console.error("SESSION svg missing intact fixture totals (2600 in / 300 out, 4m)");
     process.exit(1);
   }
-  return svg;
+  return svgs;
 }
 
-const doneUri = dataUriFromSvg(snapshotSvg("done-58.svg"));
-const needsUri = dataUriFromSvg(snapshotSvg("needs-you-58.svg"));
-const sessionUri = dataUriFromSvg(generateSessionSvg());
+const slips = generateSlips();
+const doneUri = dataUriFromSvg(slips.done);
+const needsUri = dataUriFromSvg(slips["needs-you"]);
+const sessionUri = dataUriFromSvg(slips.session);
 
-function htmlFor({ width, height, cardWidth, cardMaxHeight, pad, gap, h1, tag, foot, rowAlign }) {
+function htmlFor({
+  width,
+  height,
+  cardWidth,
+  cardMaxHeight,
+  pad,
+  gap,
+  h1,
+  tag,
+  foot,
+  rowAlign,
+  rowMargin,
+  frameJustify,
+  rowFlex,
+}) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -84,12 +122,12 @@ function htmlFor({ width, height, cardWidth, cardMaxHeight, pad, gap, h1, tag, f
   html, body { margin: 0; width: ${width}px; height: ${height}px; background: #1c1c1c; color: #f3f0e7;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   .frame { box-sizing: border-box; width: ${width}px; height: ${height}px; padding: ${pad};
-    display: flex; flex-direction: column; }
+    display: flex; flex-direction: column; justify-content: ${frameJustify}; }
   .head { flex: 0 0 auto; }
   h1 { margin: 0; font-size: ${h1}px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; }
   .tag { margin: 8px 0 0; font-size: ${tag}px; color: #cfc8b8; line-height: 1.3; }
-  .row { flex: 1 1 auto; display: flex; align-items: ${rowAlign}; justify-content: center;
-    min-height: 0; margin-top: 18px; }
+  .row { flex: ${rowFlex}; display: flex; align-items: ${rowAlign}; justify-content: center;
+    min-height: 0; margin-top: ${rowMargin}px; }
   .group { display: flex; gap: ${gap}px; align-items: flex-start; justify-content: center; }
   .card { background: #fff6df; padding: 6px 6px 8px; box-shadow: 0 8px 24px #0008;
     width: ${cardWidth}px; max-height: ${cardMaxHeight}px; overflow: hidden; }
@@ -138,24 +176,30 @@ async function shot(out, spec) {
 await shot(outWide, {
   width: 1280,
   height: 640,
-  cardWidth: 270,
-  cardMaxHeight: 430,
-  pad: "24px 40px 20px",
-  gap: 22,
+  cardWidth: 360,
+  cardMaxHeight: 500,
+  pad: "20px 32px 16px",
+  gap: 16,
   h1: 40,
   tag: 20,
   foot: 14,
   rowAlign: "flex-start",
+  rowMargin: 16,
+  frameJustify: "flex-start",
+  rowFlex: "1 1 auto",
 });
 await shot(outSquare, {
   width: 1080,
   height: 1080,
-  cardWidth: 310,
-  cardMaxHeight: 780,
-  pad: "56px 36px 40px",
-  gap: 24,
-  h1: 52,
-  tag: 24,
+  cardWidth: 348,
+  cardMaxHeight: 640,
+  pad: "28px 10px 24px",
+  gap: 8,
+  h1: 44,
+  tag: 20,
   foot: 16,
-  rowAlign: "center",
+  rowAlign: "flex-start",
+  rowMargin: 18,
+  frameJustify: "flex-start",
+  rowFlex: "1 1 auto",
 });

@@ -81,12 +81,12 @@ const html = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>agentslip — receipts for Claude Code and Codex (virtual paper roll preview)</title>
+  <title>agentslip — thermal receipts for Claude Code and Codex</title>
   <meta name="description" content="agentslip: Claude Code and Codex hooks that print a thermal ESC/POS slip when the agent is done, needs your permission, or ends a session — or show it on a virtual paper roll. Static preview with three example slips. MIT."/>
   <link rel="canonical" href="https://estebanindiveri.github.io/agentslip/"/>
   <meta property="og:type" content="website"/>
   <meta property="og:site_name" content="agentslip"/>
-  <meta property="og:title" content="agentslip — receipts for your coding agents"/>
+  <meta property="og:title" content="agentslip — Claude Code &amp; Codex hooks that print thermal receipts"/>
   <meta property="og:description" content="Claude Code and Codex hooks that print a paper slip (DONE / NEEDS YOU / SESSION) on a network ESC/POS printer or a virtual roll in the browser."/>
   <meta property="og:url" content="https://estebanindiveri.github.io/agentslip/"/>
   <meta property="og:image" content="https://estebanindiveri.github.io/agentslip/social-preview.png"/>
@@ -94,7 +94,7 @@ const html = `<!DOCTYPE html>
   <meta property="og:image:height" content="640"/>
   <meta property="og:image:alt" content="Three agentslip receipts: DONE, NEEDS YOU and SESSION"/>
   <meta name="twitter:card" content="summary_large_image"/>
-  <meta name="twitter:title" content="agentslip — receipts for your coding agents"/>
+  <meta name="twitter:title" content="agentslip — Claude Code &amp; Codex hooks that print thermal receipts"/>
   <meta name="twitter:description" content="Claude Code and Codex hooks that print a paper slip, or show it on a virtual roll. No printer required."/>
   <meta name="twitter:image" content="https://estebanindiveri.github.io/agentslip/social-preview.png"/>
   <link rel="stylesheet" href="./style.css"/>
