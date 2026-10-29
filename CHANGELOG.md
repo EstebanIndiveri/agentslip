@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Documented install is clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `npm install -g ./agentslip-*.tgz` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
+- Documented install is clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `T=$(npm pack --silent | tail -n1)` and `npm install -g "./$T"` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
 
 ## 0.1.1 — 2026-10-28
 
