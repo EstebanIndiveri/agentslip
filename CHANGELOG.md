@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Documented install is clone + `npm install` + `npm link`, or `npm pack` then `npm install -g` of the tarball. `npm install -g github:EstebanIndiveri/agentslip` cannot work: git-dep `prepare` inherits the global prefix (`tsc` not found) and npm links the global package at a temp clone that is then deleted. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
+
 ## 0.1.1 — 2026-10-28
 
 - Assignment redaction does not consume the value when the name is not a secret, so `Bash: DB_PASS=`, `I ran: APIKEY=`, and `aws_secret_access_key =` are redacted. The name is checked before scanning the value so `a:a:a:…` is not O(n²).

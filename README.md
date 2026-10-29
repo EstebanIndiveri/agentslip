@@ -44,13 +44,14 @@ npm link
 agentslip test
 ```
 
-Once the repository is **public**, the same `prepare` script is meant to make this work:
+Same clone, as a global tarball (still no npm publish; `private: true`):
 
 ```bash
-npm install -g github:EstebanIndiveri/agentslip
+npm pack
+npm install -g ./agentslip-0.1.1.tgz
 ```
 
-That GitHub URL install **cannot be tested while the repo is private** (npm gets 404). Do not treat it as verified. A local equivalent that *was* verified: `npm pack` then `npm install -g` of the tarball, and `npm link`, both followed by `agentslip test` in a clean HOME.
+`npm install -g github:EstebanIndiveri/agentslip` does **not** work. npm's git-dep `prepare` for a global install inherits the global prefix, so `tsc` is not on PATH (`sh: 1: tsc: not found`, exit 127). npm then links the global package at a temp clone that is deleted. A non-global `npm install github:EstebanIndiveri/agentslip` in a project does work, because that path installs devDependencies into the clone before `prepare`. There is no reliable package-side fix without publishing to the registry.
 
 Without a global install, call the compiled file with an absolute path. `install --write` then stores that same command in the hook settings, **quoted** so a path with spaces works:
 
