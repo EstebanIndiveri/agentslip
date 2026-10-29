@@ -45,14 +45,20 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   17. Hard-slice the scan window (no whitespace cut before redacting) → filled boundary-straddle tests fail.
   18. Drop the `redactDeep` character budget → adversarial MultiEdit (`"a-".repeat(4096)` / `"eyJ-".repeat(2048)`) exceeds 500 ms, or more than ~12 KB is fed to `redact`.
   19. Drop the `redactDeep` depth guard → 10k-nest test throws.
-  20. JSON_STRING / JSON_STRING_UNCLOSED `\\?` (single escape on both quote prefixes) → Bash double-escaped JSON test fails.
+  20. Set `JSON_QUOTE_BS_MAX` to `1` → Bash double-escaped JSON test fails.
   21. Drop the NEEDS YOU line cap in `src/slips/document.ts` → more than 8 request content lines print.
   22. `clipField` hard-cut (keep the window when there is no whitespace) → 9 KB no-space token is not `"…"`.
   23. Drop the `budget.used` guard in `walkDeep` → `RawPastBudget99` appears raw.
-  24. Drop `JSON_STRING_UNCLOSED` → unclosed `{"apiKey":"…` / `{'password': 'a b …` and space-in-value filled-straddle tests fail.
-  25. Revert the JSON_STRING / JSON_STRING_UNCLOSED value class to `[^"'\\]` → JSON-backslash leak tests fail.
-  26. Restore the old value alternation `(?!\4)[^\\]|\\.` (lookahead only on the non-escape branch) → adjacent escaped-JSON neighbor tests fail.
+  24. Require a closing quote (drop unclosed values) in `tryRedactJsonField` → unclosed `{"apiKey":"…` / `{'password': 'a b …` and space-in-value filled-straddle tests fail.
+  25. Treat a longer backslash-run + quote as the closer (no lookahead) → escaped-quote-in-escaped-JSON test fails.
+  26. Pair `\\.` instead of counting the backslash run in `scanQuotedValue` → escaped-quote-in-escaped-JSON test fails.
   27. Drop `dist` from `package.json` `files` → the pack-then-global-install test fails (`agentslip --version` is not 0).
+  28. Reject `\\` inside JSON field names / do not strip them before `isSecretName` → backslash-in-field-name tests fail.
+  29. Restore module-level `redactDeepStats` and ignore the per-call `stats` argument → per-call stats test fails.
+  30. Hardcode `BUNDLE_PKGS` to `["receiptline"]` (omit nested deps) → pack-global offline install fails.
+  31. Set `package.json` `prepare` to `node -e "process.exit(7)"` → the real-prepare test fails.
+  32. Close `scanQuotedValue` whenever `n>=k` (no parity / modulus check) → quote-then-comma/brace/bracket password tests leak `Zq8Tail99`.
+  33. Drop the `n>k` close branch (only close when `n===k`) → a JSON value that ends with a backslash swallows the next field (`[redacted]","user":` / `KeepNext99` tests fail).
 
 ## Adding an agent
 

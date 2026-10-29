@@ -19,14 +19,17 @@ function runHook(
   input: string,
   extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<{ stdout: string; stderr: string; code: number | null; ms: number; home: string }> {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+  const home =
+    typeof extraEnv.AGENTSLIP_HOME === "string" && extraEnv.AGENTSLIP_HOME
+      ? extraEnv.AGENTSLIP_HOME
+      : fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
   const { cmd, args } = bin();
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, [...args, "hook"], {
       env: {
         ...process.env,
-        AGENTSLIP_HOME: extraEnv.AGENTSLIP_HOME || home,
+        AGENTSLIP_HOME: home,
         AGENTSLIP_GIT_REPO: "demo-app",
         AGENTSLIP_GIT_BRANCH: "main",
         AGENTSLIP_GIT_SHORTSTAT: "1 file changed, 3 insertions(+)",
@@ -45,7 +48,7 @@ function runHook(
     });
     child.on("error", reject);
     child.on("close", (code) => {
-      resolve({ stdout, stderr, code, ms: Date.now() - started, home: extraEnv.AGENTSLIP_HOME || home });
+      resolve({ stdout, stderr, code, ms: Date.now() - started, home });
     });
     child.stdin.write(input);
     child.stdin.end();
@@ -55,14 +58,17 @@ function runHook(
 function runHookOpenStdin(
   extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<{ stdout: string; stderr: string; code: number | null; ms: number; home: string }> {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
+  const home =
+    typeof extraEnv.AGENTSLIP_HOME === "string" && extraEnv.AGENTSLIP_HOME
+      ? extraEnv.AGENTSLIP_HOME
+      : fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-e2e-"));
   const { cmd, args } = bin();
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, [...args, "hook"], {
       env: {
         ...process.env,
-        AGENTSLIP_HOME: extraEnv.AGENTSLIP_HOME || home,
+        AGENTSLIP_HOME: home,
         AGENTSLIP_NOW: "2026-10-27T15:00:00.000Z",
         TZ: "UTC",
         ...extraEnv,
@@ -87,7 +93,7 @@ function runHookOpenStdin(
         stderr,
         code,
         ms: Date.now() - started,
-        home: extraEnv.AGENTSLIP_HOME || home,
+        home,
       });
     });
   });

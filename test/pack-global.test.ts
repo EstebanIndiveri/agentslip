@@ -3,11 +3,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runtimeBundleNames } from "./runtime-bundle.js";
 
 const ROOT = process.cwd();
-const BUNDLE_PKGS = ["receiptline", "iconv-lite", "pngjs", "safer-buffer"];
+const BUNDLE_PKGS = runtimeBundleNames(ROOT);
 
 describe("npm pack then npm install -g", () => {
+  it("derives the offline bundle from package.json, including nested deps", () => {
+    expect(BUNDLE_PKGS).toContain("receiptline");
+    expect(BUNDLE_PKGS.length).toBeGreaterThan(1);
+  });
+
   const dirs: string[] = [];
   afterEach(() => {
     for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
