@@ -26,6 +26,10 @@
  * lookahead) → escaped-quote-in-escaped-JSON tests fail.
  * MUTATION CHECK: pair `\\.` instead of counting the backslash run →
  * escaped-quote-in-escaped-JSON tests fail.
+ * MUTATION CHECK: close whenever n>=k (no parity check) → escaped-quote
+ * tails (`pa",`, `pa"}`, `pa"]`, `pa" ,`) leak at escape levels 1–3.
+ * MUTATION CHECK: never close on the n>k branch → a value that ends with
+ * a backslash swallows the next JSON field.
  * MUTATION CHECK: reject `\\` inside JSON field names / do not strip them
  * before isSecretName → backslash-in-field-name tests fail.
  * MUTATION CHECK: restore module-level redactDeepStats and ignore the per-call
@@ -344,23 +348,19 @@ function skipColon(text: string, i: number): number | null {
   return j;
 }
 
-function looksLikeJsonCloserContext(text: string, pos: number): boolean {
-  let p = pos;
-  while (p < text.length && (text[p] === " " || text[p] === "\t")) p += 1;
-  if (p >= text.length) return true;
-  const c = text[p] as string;
-  return c === "," || c === "}" || c === "]" || c === "\n" || c === "\r";
-}
-
 function scanQuotedValue(
   text: string,
   i: number,
   k: number,
   q: string,
 ): { raw: string; end: number; closed: boolean } {
-  const max = Math.min(text.length, i + JSON_VALUE_MAX);
+  const contentLimit = i + JSON_VALUE_MAX;
+  const max = Math.min(text.length, contentLimit + JSON_QUOTE_BS_MAX + 1);
   let j = i;
   while (j < max) {
+    if (j > contentLimit) {
+      return { raw: text.slice(i, contentLimit), end: contentLimit, closed: false };
+    }
     if (text[j] !== "\\") {
       if (k === 0 && text[j] === q) {
         return { raw: text.slice(i, j), end: j + 1, closed: true };
@@ -372,17 +372,18 @@ function scanQuotedValue(
     while (j + n < max && text[j + n] === "\\") n += 1;
     const after = j + n < text.length ? text[j + n] : "";
     if (after === q) {
-      if (n === k) {
-        return { raw: text.slice(i, j), end: j + n + 1, closed: true };
-      }
-      if (n > k) {
-        const afterQuote = j + n + 1;
-        if (looksLikeJsonCloserContext(text, afterQuote) && (n - k) % 2 === 0) {
-          const extra = n - k;
-          return { raw: text.slice(i, j + extra), end: j + extra + k + 1, closed: true };
+      // Close only at this escape depth: n===k, or extra backslashes that are
+      // a whole number of escaped-backslash pairs for this depth.
+      // MUTATION CHECK: n>=k with no modulus → escaped-quote tails leak.
+      // MUTATION CHECK: skip the n>k branch → a trailing backslash in the
+      // value swallows the next field.
+      if (n === k || (n > k && (n - k) % (2 * (k + 1)) === 0)) {
+        const extra = n - k;
+        const contentEnd = j + extra;
+        if (contentEnd - i > JSON_VALUE_MAX) {
+          return { raw: text.slice(i, contentLimit), end: contentLimit, closed: false };
         }
-        j += n + 1;
-        continue;
+        return { raw: text.slice(i, contentEnd), end: contentEnd + k + 1, closed: true };
       }
       j += n + 1;
       continue;

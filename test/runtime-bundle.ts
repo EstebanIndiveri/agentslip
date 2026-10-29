@@ -12,10 +12,14 @@ export function runtimeBundleNames(root: string): string[] {
     if (seen.has(name)) return;
     seen.add(name);
     const dir = path.join(root, "node_modules", name);
-    if (!fs.existsSync(dir)) return;
+    if (!fs.existsSync(dir)) {
+      throw new Error(`runtime dependency ${name} is not installed at ${dir}`);
+    }
     out.push(name);
     const depPath = path.join(dir, "package.json");
-    if (!fs.existsSync(depPath)) return;
+    if (!fs.existsSync(depPath)) {
+      throw new Error(`runtime dependency ${name} is missing package.json at ${depPath}`);
+    }
     const dep = JSON.parse(fs.readFileSync(depPath, "utf8")) as {
       dependencies?: Record<string, string>;
     };

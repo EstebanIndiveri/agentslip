@@ -1427,6 +1427,158 @@ describe("issue #3 redaction follow-ups", () => {
     expect(out).toMatch(/\[redacted\]/);
   });
 
+  const quoteTails: { name: string; password: (needle: string) => string }[] = [
+    { name: "comma", password: (n) => `pa", ${n}` },
+    { name: "brace", password: (n) => `pa"}${n}` },
+    { name: "bracket", password: (n) => `pa"]${n}` },
+    { name: "comma-space", password: (n) => `pa" ,${n}` },
+  ];
+
+  function stringifyLevels(obj: object, levels: number): string {
+    let s = JSON.stringify(obj);
+    for (let n = 1; n < levels; n++) s = JSON.stringify(s);
+    return s;
+  }
+
+  function escapedJsonPassword(k: number, password: string): string {
+    const open = `${"\\".repeat(k)}"`;
+    const innerQuote = `${"\\".repeat(2 * k + 1)}"`;
+    const inner = password.replaceAll('"', innerQuote);
+    return `{${open}password${open}:${open}${inner}${open}}`;
+  }
+
+  for (const level of [1, 2, 3] as const) {
+    for (const tail of quoteTails) {
+      it(`hides a quote-then-${tail.name} password after ${level} JSON.stringify pass(es)`, () => {
+        const needle = "Zq8Tail99";
+        const text = stringifyLevels({ password: tail.password(needle) }, level);
+        expect(text).toContain(needle);
+        const out = redact(text);
+        expect(out, text).not.toContain(needle);
+        expect(out).toMatch(/\[redacted\]/);
+      });
+
+      it(`hides a quote-then-${tail.name} password at escape depth k=${level}`, () => {
+        const needle = "Zq8Tail99";
+        const text = escapedJsonPassword(level, tail.password(needle));
+        expect(text).toContain(needle);
+        const out = redact(text);
+        expect(out, text).not.toContain(needle);
+        expect(out).toMatch(/\[redacted\]/);
+      });
+    }
+  }
+
+  it("reviewer repro: double-stringified password containing pa\", does not leak the tail", () => {
+    const needle = "Zq8Tail99";
+    const text = JSON.stringify(JSON.stringify({ password: `pa", ${needle}` }));
+    expect(text).toContain(needle);
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+    expect(out).not.toMatch(new RegExp(`\\[redacted\\].*${needle}`));
+  });
+
+  const svgFixtures: { name: string; file: string; inject: (p: Record<string, unknown>, text: string) => void }[] = [
+    {
+      name: "claude-code/stop",
+      file: "fixtures/claude-code/stop.json",
+      inject: (p, text) => {
+        p.last_assistant_message = text;
+      },
+    },
+    {
+      name: "claude-code/stop-sparse",
+      file: "fixtures/claude-code/stop-sparse.json",
+      inject: (p, text) => {
+        p.last_assistant_message = text;
+      },
+    },
+    {
+      name: "claude-code/notification",
+      file: "fixtures/claude-code/notification.json",
+      inject: (p, text) => {
+        p.message = text;
+      },
+    },
+    {
+      name: "claude-code/permission-request",
+      file: "fixtures/claude-code/permission-request.json",
+      inject: (p, text) => {
+        p.tool_input = { command: text, description: "run" };
+      },
+    },
+    {
+      name: "claude-code/session-end",
+      file: "fixtures/claude-code/session-end.json",
+      inject: (p, text) => {
+        p.reason = text;
+      },
+    },
+    {
+      name: "codex/stop",
+      file: "fixtures/codex/stop.json",
+      inject: (p, text) => {
+        p.last_assistant_message = text;
+      },
+    },
+    {
+      name: "codex/permission-request",
+      file: "fixtures/codex/permission-request.json",
+      inject: (p, text) => {
+        p.tool_input = { command: text, description: "run" };
+      },
+    },
+    {
+      name: "codex/session-end",
+      file: "fixtures/codex/session-end.json",
+      inject: (p, text) => {
+        p.reason = text;
+      },
+    },
+  ];
+
+  for (const fx of svgFixtures) {
+    it(`${fx.name} SVG does not leak a double-stringified quote-then-comma password`, async () => {
+      const needle = "Zq8Tail99";
+      const text = JSON.stringify(JSON.stringify({ password: `pa", ${needle}` }));
+      const payload = JSON.parse(
+        fs.readFileSync(path.join(process.cwd(), fx.file), "utf8"),
+      ) as Record<string, unknown>;
+      fx.inject(payload, text);
+      const data = await parseHook(payload, frozen);
+      expect(data).not.toBeNull();
+      const rendered = renderSlip(data as SlipData, defaultConfig(), 1);
+      expect(rendered.svg).not.toContain(needle);
+      const plain = rendered.svg.replace(/<[^>]+>/g, "").replace(/&#xa0;/g, " ");
+      expect(plain).not.toContain(needle);
+    });
+  }
+
+  it("closes a JSON value that ends with a backslash and leaves the next field visible", () => {
+    const needle = "Zq8BsEnd99";
+    const keep = "KeepNext99";
+    const text = JSON.stringify({ password: `${needle}\\`, user: keep });
+    expect(text).toContain(needle);
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toContain(keep);
+    // Comma before the next key must survive. Without the n>k close, leftover
+    // is `[redacted]"user":…` (the closer quote is reused as the key's quote).
+    expect(out).toMatch(/\[redacted\]","user":/);
+  });
+
+  it("closes an escaped-JSON value that ends with a backslash and leaves the next field visible", () => {
+    const needle = "Zq8BsEnd99";
+    const keep = "KeepNext99";
+    const text = JSON.stringify(JSON.stringify({ password: `${needle}\\`, user: keep }));
+    expect(text).toContain(needle);
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toContain(keep);
+    expect(out).toMatch(/\[redacted\]\\",\\"user\\":/);
+  });
+
   it("redacts an assignment longer than 4096 characters entirely", () => {
     const needle = "AssignLongNeedle99";
     const text = `API_KEY=${needle}${"x".repeat(5000)}END`;
@@ -1444,6 +1596,49 @@ describe("issue #3 redaction follow-ups", () => {
     expect(out).not.toMatch(/\[redacted\]/);
   });
 
+  const jsonEncodings: { name: string; wrap: (value: string) => string }[] = [
+    {
+      name: "raw JSON",
+      wrap: (value) => `{${q}apiKey${q}:${q}${value}${q}}`,
+    },
+    {
+      name: "escaped JSON",
+      wrap: (value) => `{${bs}${q}apiKey${bs}${q}:${bs}${q}${value}${bs}${q}}`,
+    },
+    {
+      name: "Python dict",
+      wrap: (value) => `{'apiKey': '${value}'}`,
+    },
+  ];
+
+  for (const enc of jsonEncodings) {
+    for (const len of [4095, 4096, 4097] as const) {
+      it(`${enc.name} value of ${len} characters ${len <= 4096 ? "is redacted" : "stays visible"}`, () => {
+        const needle = "Zq8Edge99";
+        const value = needle + "x".repeat(len - needle.length);
+        expect(value.length).toBe(len);
+        const text = enc.wrap(value);
+        const out = redact(text);
+        if (len <= 4096) {
+          expect(out, text.slice(0, 80)).not.toContain(needle);
+          expect(out).toMatch(/\[redacted\]/);
+        } else {
+          expect(out).toContain(needle);
+          expect(out).not.toMatch(/\[redacted\]/);
+        }
+      });
+    }
+  }
+
+  it("reviewer repro: a closed JSON value of exactly 4096 characters is redacted", () => {
+    const needle = "Zq8Edge99";
+    const text = `{${q}apiKey${q}:${q}${needle}${"x".repeat(4087)}${q}}`;
+    expect(needle.length + 4087).toBe(4096);
+    const out = redact(text);
+    expect(out).not.toContain(needle);
+    expect(out).toMatch(/\[redacted\]/);
+  });
+
   it("redacts a JSON field name that contains a backslash", () => {
     const needle = "BsNameLeak99";
     const cases = [
@@ -1459,7 +1654,7 @@ describe("issue #3 redaction follow-ups", () => {
     }
   });
 
-  it("does not match a secret split across lines (known limitation)", () => {
+  it("does not match a secret split across lines (deferred to v0.1.3)", () => {
     const needle = "SplitLineSecret99";
     const cases = [
       `API_KEY=abc${bs}\n${needle}`,

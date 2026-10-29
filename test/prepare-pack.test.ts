@@ -33,7 +33,17 @@ describe("prepare is exercised (not ignored)", () => {
     }
   });
 
-  it("npm pack without --ignore-scripts runs prepare and fails if prepare is broken", () => {
+  it("throws if a package.json dependency is missing from node_modules", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-bundle-missing-"));
+    dirs.push(dir);
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "probe", dependencies: { "not-installed-dep-xyz": "1.0.0" } }),
+    );
+    expect(() => runtimeBundleNames(dir)).toThrow(/not-installed-dep-xyz/);
+  });
+
+  it("a probe package npm pack (no --ignore-scripts) fails if its prepare is broken", () => {
     const src = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-prep-fail-"));
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-prep-pack-"));
     dirs.push(src, dest);
@@ -96,7 +106,7 @@ describe("prepare is exercised (not ignored)", () => {
     expect(fs.existsSync(path.join(src, "dist", "cli.js"))).toBe(true);
   }, 30_000);
 
-  it("npm pack without --ignore-scripts writes files produced by prepare", () => {
+  it("a probe package npm pack (no --ignore-scripts) includes files its prepare wrote", () => {
     const src = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-prep-ok-"));
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-prep-ok-pack-"));
     dirs.push(src, dest);
