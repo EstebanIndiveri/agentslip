@@ -1,8 +1,10 @@
 # agentslip — receipts for your coding agents
 
+**[Live preview →](https://estebanindiveri.github.io/agentslip/)** (static roll, no install) · [Releases](https://github.com/EstebanIndiveri/agentslip/releases) · [60-second try](#60-second-try-virtual-printer-no-hardware) · [Install](#install-put-agentslip-on-path) · [Report your printer](https://github.com/EstebanIndiveri/agentslip/issues/new?template=printer-report.yml)
+
 Claude Code and Codex hooks that print a small paper slip when your agent is **done**, when it **needs you**, and when the **session ends**. Use a network ESC/POS thermal printer (58 mm or 80 mm), or the built-in **virtual paper roll** in your browser — no hardware required.
 
-The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts [common secret patterns](#privacy) before a slip is rendered, and sends nothing anywhere except the printer you configure on your LAN. Tokens and cost are printed only when the session transcript contains them; otherwise the slip says `n/a`.
+The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts [common secret patterns](#privacy) before a slip is rendered, and sends nothing anywhere except the printer you configure on your LAN. Session totals (duration, turns, tools, tokens, cost) are printed only when the session transcript contains them; otherwise the slip says `n/a`. Nothing is estimated.
 
 `agentslip hook` reads the JSON that Claude Code or Codex sends on stdin:
 
@@ -13,8 +15,6 @@ The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts 
 Default output is a **virtual paper roll** (SVG in `~/.agentslip/slips/` plus a local viewer). A network ESC/POS printer is optional.
 
 ![Terminal on the left running node dist/cli.js hook in a git repo; virtual paper roll on the right receiving DONE then NEEDS YOU](docs/media/agentslip-demo.gif)
-
-A static [demo of the virtual roll](https://estebanindiveri.github.io/agentslip/) is published. [Releases](https://github.com/EstebanIndiveri/agentslip/releases).
 
 ## Who this is for
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import type { AgentslipConfig, RenderedSlip, SlipData } from "../types.js";
 import { formatLocal } from "../clock.js";
+import { compactShortstat } from "../gitinfo.js";
 import { redact } from "../redact.js";
 import { wrapLine } from "../wrap.js";
 import { escapeRl } from "./escape.js";
@@ -51,7 +52,7 @@ export function buildDocument(
     kv(lines, "branch", data.branch ? r(data.branch) : undefined, cpl);
     kv(lines, "time", formatLocal(data.time), cpl);
     if (data.duration) kv(lines, "dur", data.duration, cpl);
-    if (data.gitShortstat) kv(lines, "diff", r(data.gitShortstat), cpl);
+    if (data.gitShortstat) kv(lines, "diff", r(compactShortstat(data.gitShortstat)), cpl);
     if (data.summary) {
       lines.push("-".repeat(Math.min(cpl, 32)));
       for (const w of wrapLine(r(data.summary), cpl)) lines.push(escapeRl(w));
@@ -108,11 +109,22 @@ export function eventLabel(event: string): string {
   }
 }
 
+/** receiptline `|` splits a line into two equal columns. */
+export function kvColumnWidth(cpl: number): number {
+  return Math.floor(cpl / 2);
+}
+
 function kv(lines: string[], key: string, value: string | undefined, cpl: number): void {
   if (value === undefined || value === "") return;
+  const colW = kvColumnWidth(cpl);
+  const words = value.replace(/\s+/g, " ").trim().split(" ");
+  if (words.some((w) => w.length > colW)) {
+    lines.push(escapeRl(key));
+    for (const w of wrapLine(value, cpl)) lines.push(escapeRl(w));
+    return;
+  }
+  const wrapped = wrapLine(value, colW);
   const keyW = Math.max(6, key.length);
-  const valW = Math.max(8, cpl - keyW - 3);
-  const wrapped = wrapLine(value, valW);
   const first = wrapped[0] ?? "";
   lines.push(`${escapeRl(key.padEnd(keyW))} | ${escapeRl(first)}`);
   for (const extra of wrapped.slice(1)) {

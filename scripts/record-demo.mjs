@@ -38,11 +38,16 @@ function sh(cmd, cwd = gitRepo) {
 }
 
 function env() {
-  return {
+  const e = {
     ...process.env,
     AGENTSLIP_HOME: home,
     TZ: "UTC",
   };
+  delete e.AGENTSLIP_NOW;
+  delete e.AGENTSLIP_GIT_REPO;
+  delete e.AGENTSLIP_GIT_BRANCH;
+  delete e.AGENTSLIP_GIT_SHORTSTAT;
+  return e;
 }
 
 function waitHttp(url, timeoutMs = 8000) {
