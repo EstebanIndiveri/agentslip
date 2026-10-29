@@ -261,7 +261,7 @@ describe("compiled binary e2e", () => {
       env: { ...process.env, HOME: tmp, PATH: "/usr/bin:/bin" },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`'${process.execPath}' '${cli}' hook`);
+    expect(result.stdout).toContain(`'${process.execPath}' '${fs.realpathSync(cli)}' hook`);
     expect(result.stdout).toContain("My Tools");
   });
 
