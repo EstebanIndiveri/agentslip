@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Documented install is clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `T=$(npm pack --silent | tail -n1)` and `npm install -g "./$T"` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
+
 ## 0.1.1 — 2026-10-28
 
 - Assignment redaction does not consume the value when the name is not a secret, so `Bash: DB_PASS=`, `I ran: APIKEY=`, and `aws_secret_access_key =` are redacted. The name is checked before scanning the value so `a:a:a:…` is not O(n²).
