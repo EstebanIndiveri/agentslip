@@ -44,14 +44,19 @@ npm link
 agentslip test
 ```
 
-Same clone, as a global tarball (still no npm publish; `private: true`):
+Uninstall that link with `npm unlink -g agentslip`.
+
+Same clone, as a global tarball (still no npm publish; `private: true`). `npm pack` must run **after** `npm install` in the clone — otherwise `prepare` / `tsc` exits 127:
 
 ```bash
+npm install
 npm pack
-npm install -g ./agentslip-0.1.1.tgz
+npm install -g ./agentslip-*.tgz
 ```
 
-`npm install -g github:EstebanIndiveri/agentslip` does **not** work. npm's git-dep `prepare` for a global install inherits the global prefix, so `tsc` is not on PATH (`sh: 1: tsc: not found`, exit 127). npm then links the global package at a temp clone that is deleted. A non-global `npm install github:EstebanIndiveri/agentslip` in a project does work, because that path installs devDependencies into the clone before `prepare`. There is no reliable package-side fix without publishing to the registry.
+Uninstall that tarball with `npm uninstall -g agentslip`. The same `npm pack` tarball served over HTTP also works as `npm install -g <url>.tgz`.
+
+`npm install -g github:EstebanIndiveri/agentslip` does **not** work with the current `prepare` script: git-dep `prepare` for a global install inherits the global prefix, so `tsc` is not on PATH (`sh: 1: tsc: not found`, exit 127). npm can then link the global package at a temp clone that is deleted. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works, because that path installs devDependencies into the clone before `prepare`. Committing compiled `dist/` and dropping `prepare` also works, both as an HTTP tarball and via `git+file:` with `--install-links`.
 
 Without a global install, call the compiled file with an absolute path. `install --write` then stores that same command in the hook settings, **quoted** so a path with spaces works:
 
