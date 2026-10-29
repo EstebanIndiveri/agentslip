@@ -4,7 +4,7 @@
 
 Claude Code and Codex hooks that print a small paper slip when your agent is **done**, when it **needs you**, and when the **session ends**. Use a network ESC/POS thermal printer (58 mm or 80 mm), or the built-in **virtual paper roll** in your browser — no hardware required.
 
-The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts [common secret patterns](#privacy) before a slip is rendered, and sends nothing anywhere except the printer you configure on your LAN. Session totals (duration, turns, tools, tokens, and cost (when the transcript has it)) are printed only when the session transcript contains them; otherwise the slip says `n/a`. Nothing is estimated.
+The hook never blocks the agent (it always exits 0 in under 2 seconds), redacts [common secret patterns](#privacy) before a slip is rendered, and sends nothing anywhere except the printer you configure on your LAN. Session totals (duration, turns, tools, tokens, cost) are printed only when the session transcript contains them; otherwise the slip says `n/a`. Nothing is estimated.
 
 `agentslip hook` reads the JSON that Claude Code or Codex sends on stdin:
 

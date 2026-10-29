@@ -99,12 +99,37 @@ const doneUri = dataUriFromSvg(slips.done);
 const needsUri = dataUriFromSvg(slips["needs-you"]);
 const sessionUri = dataUriFromSvg(slips.session);
 
+/** Matches `.card { padding: 6px 6px 8px }` (content-box). */
+const CARD_PAD_X = 6;
+
+function cardOuterWidth(cardWidth) {
+  return cardWidth + CARD_PAD_X * 2;
+}
+
+function rowUsedWidth(cardWidth, gap, cardsPerRow) {
+  return cardOuterWidth(cardWidth) * cardsPerRow + gap * (cardsPerRow - 1);
+}
+
+function assertFits(spec) {
+  const usable = spec.width - spec.padX * 2;
+  const used = rowUsedWidth(spec.cardWidth, spec.gap, spec.cardsPerRow);
+  if (used > usable) {
+    console.error(
+      `layout overflow ${spec.width}×${spec.height}: ${used}px cards+gaps > ${usable}px usable ` +
+        `(${spec.cardsPerRow}×${cardOuterWidth(spec.cardWidth)}px outer + ${spec.gap}px gaps, padX ${spec.padX})`,
+    );
+    process.exit(1);
+  }
+}
+
 function htmlFor({
   width,
   height,
   cardWidth,
   cardMaxHeight,
-  pad,
+  padX,
+  padTop,
+  padBottom,
   gap,
   h1,
   tag,
@@ -113,7 +138,9 @@ function htmlFor({
   rowMargin,
   frameJustify,
   rowFlex,
+  cardsPerRow,
 }) {
+  const wrapMax = rowUsedWidth(cardWidth, gap, cardsPerRow);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -121,15 +148,17 @@ function htmlFor({
 <style>
   html, body { margin: 0; width: ${width}px; height: ${height}px; background: #1c1c1c; color: #f3f0e7;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-  .frame { box-sizing: border-box; width: ${width}px; height: ${height}px; padding: ${pad};
+  .frame { box-sizing: border-box; width: ${width}px; height: ${height}px;
+    padding: ${padTop}px ${padX}px ${padBottom}px;
     display: flex; flex-direction: column; justify-content: ${frameJustify}; }
   .head { flex: 0 0 auto; }
   h1 { margin: 0; font-size: ${h1}px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; }
   .tag { margin: 8px 0 0; font-size: ${tag}px; color: #cfc8b8; line-height: 1.3; }
   .row { flex: ${rowFlex}; display: flex; align-items: ${rowAlign}; justify-content: center;
     min-height: 0; margin-top: ${rowMargin}px; }
-  .group { display: flex; gap: ${gap}px; align-items: flex-start; justify-content: center; }
-  .card { background: #fff6df; padding: 6px 6px 8px; box-shadow: 0 8px 24px #0008;
+  .group { display: flex; flex-wrap: wrap; gap: ${gap}px; align-items: flex-start;
+    justify-content: center; max-width: ${wrapMax}px; }
+  .card { box-sizing: content-box; background: #fff6df; padding: 6px 6px 8px; box-shadow: 0 8px 24px #0008;
     width: ${cardWidth}px; max-height: ${cardMaxHeight}px; overflow: hidden; }
   .card img { display: block; width: 100%; height: auto; }
   .foot { flex: 0 0 auto; margin-top: 12px; font-size: ${foot}px; color: #b7b09f; letter-spacing: 0.02em;
@@ -173,13 +202,16 @@ async function shot(out, spec) {
   console.log(`wrote ${out} ${st.size} bytes`);
 }
 
-await shot(outWide, {
+const wideSpec = {
   width: 1280,
   height: 640,
   cardWidth: 360,
   cardMaxHeight: 500,
-  pad: "20px 32px 16px",
+  padX: 32,
+  padTop: 20,
+  padBottom: 16,
   gap: 16,
+  cardsPerRow: 3,
   h1: 40,
   tag: 20,
   foot: 14,
@@ -187,19 +219,26 @@ await shot(outWide, {
   rowMargin: 16,
   frameJustify: "flex-start",
   rowFlex: "1 1 auto",
-});
-await shot(outSquare, {
+};
+const squareSpec = {
   width: 1080,
   height: 1080,
-  cardWidth: 348,
-  cardMaxHeight: 640,
-  pad: "28px 10px 24px",
-  gap: 8,
+  cardWidth: 360,
+  cardMaxHeight: 500,
+  padX: 48,
+  padTop: 28,
+  padBottom: 28,
+  gap: 24,
+  cardsPerRow: 2,
   h1: 44,
   tag: 20,
   foot: 16,
   rowAlign: "flex-start",
-  rowMargin: 18,
+  rowMargin: 20,
   frameJustify: "flex-start",
   rowFlex: "1 1 auto",
-});
+};
+assertFits(wideSpec);
+assertFits(squareSpec);
+await shot(outWide, wideSpec);
+await shot(outSquare, squareSpec);
