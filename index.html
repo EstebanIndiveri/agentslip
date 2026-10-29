@@ -3,18 +3,33 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>agentslip — virtual roll</title>
+  <title>agentslip — thermal receipts for Claude Code and Codex</title>
+  <meta name="description" content="agentslip: Claude Code and Codex hooks that print a thermal ESC/POS slip when the agent is done, needs your permission, or ends a session — or show it on a virtual paper roll. Static preview with three example slips. MIT."/>
+  <link rel="canonical" href="https://estebanindiveri.github.io/agentslip/"/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:site_name" content="agentslip"/>
+  <meta property="og:title" content="agentslip — Claude Code &amp; Codex hooks that print thermal receipts"/>
+  <meta property="og:description" content="Claude Code and Codex hooks that print a paper slip (DONE / NEEDS YOU / SESSION) on a network ESC/POS printer or a virtual roll in the browser."/>
+  <meta property="og:url" content="https://estebanindiveri.github.io/agentslip/"/>
+  <meta property="og:image" content="https://estebanindiveri.github.io/agentslip/social-preview.png"/>
+  <meta property="og:image:width" content="1280"/>
+  <meta property="og:image:height" content="640"/>
+  <meta property="og:image:alt" content="Three agentslip receipts: DONE, NEEDS YOU and SESSION"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="agentslip — Claude Code &amp; Codex hooks that print thermal receipts"/>
+  <meta name="twitter:description" content="Claude Code and Codex hooks that print a paper slip, or show it on a virtual roll. No printer required."/>
+  <meta name="twitter:image" content="https://estebanindiveri.github.io/agentslip/social-preview.png"/>
   <link rel="stylesheet" href="./style.css"/>
 </head>
 <body>
   <header class="top">
-    <h1>agentslip</h1>
-    <p class="tag">Static preview of the virtual paper roll. Three example slips. Newest on top.</p>
-    <p class="help">This page is a snapshot. Clone the repo and run <code>agentslip view</code> for a live roll.</p>
+    <h1>agentslip — receipts for your coding agents</h1>
+    <p class="tag">Claude Code and Codex hooks that print a slip when the agent is done, needs you, or ends a session. This is a static preview of the virtual paper roll: three example slips, newest on top.</p>
+    <p class="help">Live roll: install from the repo and run <code>agentslip view</code>. Source, install steps and printer notes: <a href="https://github.com/EstebanIndiveri/agentslip">github.com/EstebanIndiveri/agentslip</a>.</p>
   </header>
   <div class="printer" aria-hidden="true"><div class="slot"></div></div>
-  <main class="roll"><article class="slip"><img src="./slips/0003-session-20261027T150000.svg" alt="session slip"/><div class="meta"><span>session</span><span>example</span></div></article>
-<article class="slip"><img src="./slips/0002-needs-you-20261027T150000.svg" alt="needs-you slip"/><div class="meta"><span>needs-you</span><span>example</span></div></article>
-<article class="slip"><img src="./slips/0001-done-20261027T150000.svg" alt="done slip"/><div class="meta"><span>done</span><span>example</span></div></article></main>
+  <main class="roll"><article class="slip"><img src="./slips/0003-session-20261027T150000.svg" alt="SESSION slip: duration, turns, tool calls and token counts from a sample transcript"/><div class="meta"><span>session</span><span>example</span></div></article>
+<article class="slip"><img src="./slips/0002-needs-you-20261027T150000.svg" alt="NEEDS YOU slip: the agent is asking permission to run a command"/><div class="meta"><span>needs-you</span><span>example</span></div></article>
+<article class="slip"><img src="./slips/0001-done-20261027T150000.svg" alt="DONE slip: repo demo-app, branch main, 1 file, +3 -0"/><div class="meta"><span>done</span><span>example</span></div></article></main>
 </body>
 </html>
