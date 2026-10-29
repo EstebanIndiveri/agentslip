@@ -59,6 +59,7 @@ Data directory: `~/.agentslip/` (override with `AGENTSLIP_HOME` in tests).
   31. Set `package.json` `prepare` to `node -e "process.exit(7)"` → the real-prepare test fails.
   32. Close `scanQuotedValue` whenever `n>=k` (no parity / modulus check) → quote-then-comma/brace/bracket password tests leak `Zq8Tail99`.
   33. Drop the `n>k` close branch (only close when `n===k`) → a JSON value that ends with a backslash swallows the next field (`[redacted]","user":` / `KeepNext99` tests fail).
+  34. Wrap kv values at `cpl - keyW - 3` instead of `cpl/2` → the word-split test fails (`out` on the 58 mm SESSION token row).
 
 ## Adding an agent
 

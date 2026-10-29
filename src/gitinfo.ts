@@ -47,3 +47,15 @@ function emptyToUndef(s: string | undefined): string | undefined {
   if (s === undefined || s === "") return undefined;
   return s;
 }
+
+/** `1 file changed, 3 insertions(+)` → `1 file, +3 -0`. Unknown shapes pass through. */
+export function compactShortstat(raw: string): string {
+  const t = raw.replace(/\s+/g, " ").trim();
+  const files = t.match(/(\d+) files? changed/i);
+  if (!files) return t;
+  const n = files[1];
+  const fileWord = n === "1" ? "file" : "files";
+  const ins = t.match(/(\d+) insertions?/i);
+  const del = t.match(/(\d+) deletions?/i);
+  return `${n} ${fileWord}, +${ins?.[1] ?? "0"} -${del?.[1] ?? "0"}`;
+}

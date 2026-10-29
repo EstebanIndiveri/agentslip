@@ -15,6 +15,7 @@
 - Secrets split across lines (bash `\` continuation, `postgres://admin:` then a newline then the password) are deferred to v0.1.3.
 - Pages preview: description, canonical, Open Graph and Twitter card tags; sitemap; `social-preview.png` copied into the build. `<title>` / `og:title` / `twitter:title` name thermal receipts. SESSION on the social card uses the transcript fixture (duration, turns, tools, tokens; cost stays `n/a`).
 - README: live preview (GitHub Pages) and releases links; session totals wording (nothing estimated).
+- Two-column slip values wrap at receiptline's column width (`cpl/2`) so a word is never split; a token wider than that column prints as a single column. Git shortstat prints compact (`1 file, +3 -0`). This also stops the 58 mm SESSION tokens row from splitting `out` (#8).
 - Documented install (from 0.1.1, previously Unreleased): clone + `npm install` + `npm link` (`npm unlink -g agentslip` to remove), or `npm pack` after `npm install` then `T=$(npm pack --silent | tail -n1)` and `npm install -g "./$T"` (`npm uninstall -g agentslip` to remove). `npm install -g github:EstebanIndiveri/agentslip` does not work with the current `prepare` script (leaked global prefix, `tsc` not found). The pack tarball served over HTTP, and committing `dist/` without `prepare` (HTTP tarball or `git+file:` with `--install-links`), do work. A non-global `npm install github:EstebanIndiveri/agentslip` in a project still works.
 
 ## 0.1.1 — 2026-10-28

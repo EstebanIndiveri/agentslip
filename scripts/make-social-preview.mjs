@@ -144,7 +144,7 @@ function htmlFor({
     </div>
     <div class="row">
       <div class="group">
-        <div class="card"><img alt="DONE slip: repo demo-app, branch main, 1 file changed, 3 insertions" src="${doneUri}"/></div>
+        <div class="card"><img alt="DONE slip: repo demo-app, branch main, 1 file, +3 -0" src="${doneUri}"/></div>
         <div class="card"><img alt="NEEDS YOU slip: the agent is asking permission to run a command" src="${needsUri}"/></div>
         <div class="card"><img alt="SESSION slip: duration, turns, tool calls and token counts from a sample transcript" src="${sessionUri}"/></div>
       </div>

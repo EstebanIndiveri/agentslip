@@ -58,7 +58,7 @@ if (svgs.length < 3) {
 }
 
 const ALT = {
-  done: "DONE slip: repo demo-app, branch main, 1 file changed, 3 insertions",
+  done: "DONE slip: repo demo-app, branch main, 1 file, +3 -0",
   "needs-you": "NEEDS YOU slip: the agent is asking permission to run a command",
   session: "SESSION slip: duration, turns, tool calls and token counts from a sample transcript",
 };
