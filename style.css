@@ -106,9 +106,13 @@ kbd {
   outline-offset: 3px;
 }
 
-.slip svg {
+/* Static gh-pages emits <img src="./slips/*.svg">; live `agentslip view` uses <object>. */
+.slip img,
+.slip svg,
+.slip object {
   display: block;
   width: 100%;
+  max-width: 100%;
   height: auto;
 }
 
