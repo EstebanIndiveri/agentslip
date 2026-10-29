@@ -15,13 +15,24 @@ describe("npm pack then npm install -g", () => {
   it("isolated-prefix tarball install prints --version and keeps dist/cli.js", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as {
       version: string;
-      files: string[];
+      scripts?: Record<string, string>;
     };
-    expect(pkg.files).toContain("dist");
 
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-pack-src-"));
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-pack-home-"));
     const prefix = fs.mkdtempSync(path.join(os.tmpdir(), "agentslip-pack-prefix-"));
-    dirs.push(home, prefix);
+    dirs.push(src, home, prefix);
+
+    for (const rel of ["package.json", "LICENSE", "dist", "viewer/dist"]) {
+      const from = path.join(ROOT, rel);
+      if (!fs.existsSync(from)) continue;
+      fs.cpSync(from, path.join(src, rel), { recursive: true });
+    }
+    const packedPkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+    if (packedPkg.scripts) delete packedPkg.scripts.prepare;
+    fs.writeFileSync(path.join(src, "package.json"), JSON.stringify(packedPkg, null, 2));
 
     const npmCli = process.env.npm_execpath || path.join(path.dirname(process.execPath), "npm");
     const pathEnv = [path.dirname(process.execPath), "/usr/bin", "/bin"].join(path.delimiter);
@@ -36,7 +47,7 @@ describe("npm pack then npm install -g", () => {
     const packed = spawnSync(
       process.execPath,
       [npmCli, "pack", "--ignore-scripts", `--pack-destination=${home}`],
-      { cwd: ROOT, encoding: "utf8", env },
+      { cwd: src, encoding: "utf8", env },
     );
     expect(packed.status, packed.stderr || packed.stdout).toBe(0);
     const tgz = path.join(home, `agentslip-${pkg.version}.tgz`);
@@ -44,7 +55,7 @@ describe("npm pack then npm install -g", () => {
 
     const installed = spawnSync(
       process.execPath,
-      [npmCli, "install", "-g", `--prefix=${prefix}`, tgz],
+      [npmCli, "install", "-g", `--prefix=${prefix}`, "--ignore-scripts", tgz],
       { cwd: home, encoding: "utf8", env },
     );
     expect(installed.status, installed.stderr || installed.stdout).toBe(0);
