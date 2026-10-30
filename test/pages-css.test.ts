@@ -31,4 +31,16 @@ describe("viewer / pages slip CSS", () => {
     expect(builder).toMatch(/viewer\/src\/style\.css/);
     expect(builder).toMatch(/<img src="\.\/slips\//);
   });
+
+  it("gives the 384px SVG a 1:1 desktop column and stays fluid under 480px", () => {
+    const css = fs.readFileSync(cssPath, "utf8");
+    expect(declsFor(css, ".printer")).toMatch(/max-width:\s*28rem/);
+    expect(declsFor(css, ".roll")).toMatch(/max-width:\s*28rem/);
+    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(stripped).toMatch(/@media\s*\(\s*max-width:\s*480px\s*\)/);
+    const mobile = [...stripped.matchAll(/@media\s*\(\s*max-width:\s*480px\s*\)\s*\{([\s\S]*?)\n\}/g)]
+      .map(([, body]) => body)
+      .join("\n");
+    expect(mobile).toMatch(/max-width:\s*100%/);
+  });
 });

@@ -47,6 +47,7 @@ test("slip media stays inside the paper and the page does not scroll sideways", 
         const media = slip.querySelector("img, svg, object");
         const mr = media?.getBoundingClientRect();
         return {
+          mediaW: mr?.width ?? 0,
           overflowRight: mr ? mr.right - sr.right : Infinity,
           inside: Boolean(mr && mr.left >= sr.left - 1 && mr.right <= sr.right + 1),
         };
@@ -58,6 +59,10 @@ test("slip media stays inside the paper and the page does not scroll sideways", 
     for (const slip of report.slips) {
       expect(slip.inside, `slip media overflow at ${width}px`).toBe(true);
       expect(slip.overflowRight).toBeLessThanOrEqual(1);
+      if (width === 1280) {
+        expect(slip.mediaW, `native 384px slip at ${width}px`).toBeGreaterThanOrEqual(383);
+        expect(slip.mediaW, `native 384px slip at ${width}px`).toBeLessThanOrEqual(385);
+      }
     }
   }
 });

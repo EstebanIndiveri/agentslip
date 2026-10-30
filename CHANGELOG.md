@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pages / viewer: desktop `.roll` / `.printer` are `28rem` so a 384px slip SVG renders 1:1. Narrow viewports stay fluid (`@media (max-width: 480px)` is unchanged).
+- Playwright builds the real static Pages output and checks 320×568, 390×844 and 1280×800: every `.slip img` stays inside its `.slip`, the page does not scroll sideways, and the image aspect matches the SVG viewBox.
 - Pages / viewer: `.slip img`, `.slip svg`, and `.slip object` scale to the paper width so the GitHub Pages preview no longer overflows the cream slip.
 
 ## 0.1.2 — 2026-10-28
